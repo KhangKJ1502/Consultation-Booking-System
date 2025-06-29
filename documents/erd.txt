@@ -1,0 +1,171 @@
+-- SQL Script for Consultation Booking System Database Schema
+
+-- Table: users
+CREATE TABLE users (
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    full_name VARCHAR(100),
+    phone_number VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    user_type ENUM("client", "expert", "admin") NOT NULL
+);
+
+-- Table: experts
+CREATE TABLE experts (
+    expert_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID UNIQUE NOT NULL,
+    specialization VARCHAR(255) NOT NULL,
+    bio TEXT,
+    experience_years INT,
+    hourly_rate DECIMAL(10, 2),
+    availability JSON,
+    average_rating DECIMAL(2, 1) DEFAULT 0.0,
+    total_ratings INT DEFAULT 0,
+    status ENUM("active", "inactive", "pending") NOT NULL
+);
+
+-- Table: bookings
+CREATE TABLE bookings (
+    booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL,
+    expert_id UUID NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    duration_minutes INT,
+    status ENUM("pending", "confirmed", "cancelled", "completed") NOT NULL,
+    total_price DECIMAL(10, 2),
+    payment_status ENUM("pending", "paid", "refunded") NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Table: notifications
+CREATE TABLE notifications (
+    notification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: feedback
+CREATE TABLE feedback (
+    feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID UNIQUE NOT NULL,
+    client_id UUID NOT NULL,
+    expert_id UUID NOT NULL,
+    comments TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: ratings
+CREATE TABLE ratings (
+    rating_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID UNIQUE NOT NULL,
+    client_id UUID NOT NULL,
+    expert_id UUID NOT NULL,
+    score INT NOT NULL CHECK (score >= 1 AND score <= 5),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: services
+CREATE TABLE services (
+    service_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT
+);
+
+-- Table: expert_services
+CREATE TABLE expert_services (
+    expert_id UUID NOT NULL,
+    service_id UUID NOT NULL,
+    PRIMARY KEY (expert_id, service_id)
+);
+
+-- Table: payment_transactions
+CREATE TABLE payment_transactions (
+    transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    payment_method VARCHAR(50),
+    status ENUM("success", "failed", "pending") NOT NULL
+);
+
+
+-- Foreign Keys
+
+ALTER TABLE experts
+ADD CONSTRAINT fk_experts_users
+FOREIGN KEY (user_id) REFERENCES users(user_id);
+
+ALTER TABLE bookings
+ADD CONSTRAINT fk_bookings_client
+FOREIGN KEY (client_id) REFERENCES users(user_id);
+
+ALTER TABLE bookings
+ADD CONSTRAINT fk_bookings_expert
+FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+
+ALTER TABLE notifications
+ADD CONSTRAINT fk_notifications_users
+FOREIGN KEY (user_id) REFERENCES users(user_id);
+
+ALTER TABLE feedback
+ADD CONSTRAINT fk_feedback_booking
+FOREIGN KEY (booking_id) REFERENCES bookings(booking_id);
+
+ALTER TABLE feedback
+ADD CONSTRAINT fk_feedback_client
+FOREIGN KEY (client_id) REFERENCES users(user_id);
+
+ALTER TABLE feedback
+ADD CONSTRAINT fk_feedback_expert
+FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+
+ALTER TABLE ratings
+ADD CONSTRAINT fk_ratings_booking
+FOREIGN KEY (booking_id) REFERENCES bookings(booking_id);
+
+ALTER TABLE ratings
+ADD CONSTRAINT fk_ratings_client
+FOREIGN KEY (client_id) REFERENCES users(user_id);
+
+ALTER TABLE ratings
+ADD CONSTRAINT fk_ratings_expert
+FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+
+ALTER TABLE expert_services
+ADD CONSTRAINT fk_expert_services_expert
+FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+
+ALTER TABLE expert_services
+ADD CONSTRAINT fk_expert_services_service
+FOREIGN KEY (service_id) REFERENCES services(service_id);
+
+ALTER TABLE payment_transactions
+ADD CONSTRAINT fk_payment_transactions_booking
+FOREIGN KEY (booking_id) REFERENCES bookings(booking_id);
+
+
+
+
+-- Indexes
+
+CREATE INDEX idx_users_username ON users (username);
+CREATE INDEX idx_users_email ON users (email);
+CREATE INDEX idx_experts_specialization ON experts (specialization);
+CREATE INDEX idx_bookings_start_time ON bookings (start_time);
+CREATE INDEX idx_bookings_end_time ON bookings (end_time);
+CREATE INDEX idx_notifications_user_id ON notifications (user_id);
+CREATE INDEX idx_feedback_client_id ON feedback (client_id);
+CREATE INDEX idx_feedback_expert_id ON feedback (expert_id);
+CREATE INDEX idx_ratings_client_id ON ratings (client_id);
+CREATE INDEX idx_ratings_expert_id ON ratings (expert_id);
+CREATE INDEX idx_payment_transactions_booking_id ON payment_transactions (booking_id);
+
+

@@ -1,0 +1,16 @@
+Kiểm tra cổng nào đang chạy: netstat -aon | findstr :5432 
+Tìm tên tiến trình nào đang chạy: tasklist | findstr 13240
+tắt task: taskkill /PID 6688 /F
+
+User;
+Ping API: http://localhost:8899/ping/100 
+Register: http://localhost:8899/register 
+Login: http://localhost:8899/user/v1/login
+Logout: http://localhost:8899/user/v2/logout
+GetInfor: http://localhost:8899/user/v2/GetInfor 
+
+Expert:
+Create Expert: http://localhost:8899/expert/v2/createExpert
+Update Expert: http://localhost:8899/expert/v2/update
+GetAll Expert: http://localhost:8899/expert/v1/getAllExpert 
+Get Expert Detail: http://localhost:8899/expert/v1/getDetail/d3549e2f-9571-44d1-b0f2-282db2143dd4
