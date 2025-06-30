@@ -17,3 +17,7 @@ type SystemSetting struct {
 	SettingCreatedAt   time.Time    `json:"setting_created_at" db:"setting_created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	SettingUpdatedAt   time.Time    `json:"setting_updated_at" db:"setting_updated_at" gorm:"default:CURRENT_TIMESTAMP"`
 }
+
+func (SystemSetting) TableName() string {
+	return "tbl_system_settings"
+}

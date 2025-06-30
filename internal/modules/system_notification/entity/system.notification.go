@@ -27,3 +27,7 @@ type SystemNotification struct {
 	// Relationships
 	// RecipientUser *entity.User `json:"recipient_user,omitempty" gorm:"foreignKey:RecipientUserID;references:UserID"`
 }
+
+func (SystemNotification) TableName() string {
+	return "tbl_system_notifications"
+}

@@ -110,13 +110,13 @@ func (es *expertService) CreateExpertProfile(ctx context.Context, req dtoexperts
 	return resp, nil
 }
 
-func (es *expertService) GetExpertProfileDetails(ctx context.Context, expertID uuid.UUID) (*dtoexperts.ExpertFullDetailResponse, error) {
+func (es *expertService) GetExpertProfileDetails(ctx context.Context, expertID string) (*dtoexperts.ExpertFullDetailResponse, error) {
 	// 1. Thử lấy từ cache
-	// // cachedExpert, err := utils.GetExpertDetail()
-	// if err == nil && cachedExpert != nil {
-	// 	es.logger.Info("Expert detail loaded from Redis cache", zap.String("expertID", expertID.String()))
-	// 	return cachedExpert, nil
-	// }
+	cachedExpert, err := es.cache.GetExpertDetail(ctx, expertID)
+	if err == nil && cachedExpert != nil {
+		es.logger.Info("Expert detail loaded from Redis cache", zap.String("expertID", expertID))
+		return cachedExpert, nil
+	}
 	// 2. Nếu không có trong cache => Load từ DB
 	var expert entityexpert.ExpertProfile
 	if err := es.db.WithContext(ctx).
@@ -150,7 +150,7 @@ func (es *expertService) GetExpertProfileDetails(ctx context.Context, expertID u
 			AvatarURL: expert.User.AvatarURL,
 		}
 	} else {
-		return nil, fmt.Errorf("user info not found for expert: %s", expertID.String())
+		return nil, fmt.Errorf("user info not found for expert: %s", expertID)
 	}
 
 	// Map working hours
@@ -342,6 +342,27 @@ func (es *expertService) UpdateWorkHour(ctx context.Context, req dtoexperts.Upda
 		IsActive:      wh.IsActive,
 	}, nil
 }
+func (es *expertService) GetAllWorkHourByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllWorkingHourResponse, error) {
+
+	if expertID == "" {
+		return nil, fmt.Errorf("expert ID must not be empty")
+	}
+
+	// ✅ slice đúng kiểu (con trỏ ‑ hoặc bỏ * tùy DTO bạn định trả)
+	var workingHours []*dtoexperts.GetAllWorkingHourResponse
+
+	// Ví dụ dùng GORM: bảng working_hours có cột expert_id
+	if err := es.db.WithContext(ctx).
+		Table("tbl_working_hours").
+		Where("expert_id = ?", expertID).
+		Order("day_of_week, start_time").
+		Find(&workingHours).Error; err != nil {
+
+		return nil, fmt.Errorf("query working hours: %w", err)
+	}
+
+	return workingHours, nil
+}
 
 // Unvailable Time
 func (es *expertService) CreateUnavailableTime(ctx context.Context, req dtoexperts.CreateUnavailableTimeRequest) (*dtoexperts.CreateUnavailableTimeResponse, error) {
@@ -376,7 +397,6 @@ func (es *expertService) CreateUnavailableTime(ctx context.Context, req dtoexper
 		IsRecurring:       unavailable.IsRecurring,
 	}, nil
 }
-
 func (es *expertService) UpdateUnavailableTime(ctx context.Context, req dtoexperts.UpdateUnavailableTimeRequest) (*dtoexperts.UpdateUnavailableTimeResponse, error) {
 	var ua entityexpert.ExpertUnavailableTime
 	if err := es.db.WithContext(ctx).First(&ua, "unavailable_time_id = ?", req.UnavailableTimeID).Error; err != nil {
@@ -408,4 +428,108 @@ func (es *expertService) UpdateUnavailableTime(ctx context.Context, req dtoexper
 		Reason:            ua.UnavailableReason,
 		IsRecurring:       ua.IsRecurring,
 	}, nil
+}
+func (es *expertService) GetAllUnavailableTimeByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllsExpertUnavailableTimeResponse, error) {
+	if expertID == "" {
+		return nil, fmt.Errorf("expert Id must be not empty")
+	}
+	var result []*dtoexperts.GetAllsExpertUnavailableTimeResponse
+
+	if err := es.db.WithContext(ctx).
+		Table("tbl_expert_unavailable_times").
+		Where("expert_profile_id = ?", expertID).
+		Order("unavailable_start_datetime").
+		Select(`
+        unavailable_time_id        AS unavailable_time_id,
+        unavailable_start_datetime AS start_time,
+        unavailable_end_datetime   AS end_time,
+        unavailable_reason         AS reason,
+        is_recurring,
+        recurrence_pattern
+    `).
+		Scan(&result).Error; err != nil {
+		return nil, fmt.Errorf("query is failed %w", err)
+	}
+
+	return result, nil
+}
+
+// Expert Specialization
+func (es *expertService) CreateExpertSpecialization(ctx context.Context, req dtoexperts.CreateSpecializationRequest) (*dtoexperts.CreateSpecializationResponse, error) {
+	specialization := entityexpert.ExpertSpecialization{
+		ExpertProfileID:           uuid.MustParse(req.ExpertProfileID),
+		SpecializationName:        req.SpecializationName,
+		SpecializationDescription: &req.SpecializationDescription,
+		IsPrimary:                 req.IsPrimary,
+	}
+
+	if err := es.db.WithContext(ctx).Create(&specialization).Error; err != nil {
+		return nil, fmt.Errorf("failed to create specialization: %w", err)
+	}
+
+	return &dtoexperts.CreateSpecializationResponse{
+		SpecializationID:          specialization.SpecializationID.String(),
+		ExpertProfileID:           specialization.ExpertProfileID.String(),
+		SpecializationName:        specialization.SpecializationName,
+		SpecializationDescription: *specialization.SpecializationDescription,
+		IsPrimary:                 specialization.IsPrimary,
+		CreateAt:                  specialization.CreatedAt,
+	}, nil
+}
+func (es *expertService) UpdateExpertSpecialization(ctx context.Context, req dtoexperts.UpdateExpertSpecializationRequest) (*dtoexperts.UpdateExpertSpecializationRespone, error) {
+	var specialization entityexpert.ExpertSpecialization
+
+	if err := es.db.WithContext(ctx).
+		First(&specialization, "specialization_id = ?", req.SpecializationID).Error; err != nil {
+		return nil, fmt.Errorf("specialization not found: %w", err)
+	}
+
+	specialization.SpecializationName = req.SpecializationName
+	specialization.SpecializationDescription = &req.SpecializationDescription
+	specialization.IsPrimary = req.IsPrimary
+
+	if err := es.db.WithContext(ctx).Save(&specialization).Error; err != nil {
+		return nil, fmt.Errorf("failed to update specialization: %w", err)
+	}
+
+	return &dtoexperts.UpdateExpertSpecializationRespone{
+		SpecializationID:          specialization.SpecializationID.String(),
+		ExpertProfileID:           specialization.ExpertProfileID.String(),
+		SpecializationName:        specialization.SpecializationName,
+		SpecializationDescription: *specialization.SpecializationDescription,
+		IsPrimary:                 specialization.IsPrimary,
+	}, nil
+}
+
+func (es *expertService) GetAllExpertSpecializationByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllExpertSpecializationRespone, error) {
+	// Chuyển expertID sang UUID nếu cần (nếu entity dùng uuid.UUID)
+	expertUUID, err := uuid.Parse(expertID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid expert ID: %w", err)
+	}
+
+	// Query DB
+	var specializations []entityexpert.ExpertSpecialization
+	if err := es.db.WithContext(ctx).
+		Where("expert_profile_id = ?", expertUUID).
+		Order("is_primary DESC, created_at ASC").
+		Find(&specializations).Error; err != nil {
+		return nil, fmt.Errorf("failed to retrieve specializations: %w", err)
+	}
+
+	// Map từ entity sang DTO
+	var responses []*dtoexperts.GetAllExpertSpecializationRespone
+	for _, s := range specializations {
+		resp := &dtoexperts.GetAllExpertSpecializationRespone{
+			SpecializationID:          s.SpecializationID.String(),
+			ExpertProfileID:           s.ExpertProfileID.String(),
+			SpecializationName:        s.SpecializationName,
+			SpecializationDescription: *s.SpecializationDescription,
+			IsPrimary:                 s.IsPrimary,
+			CreateAt:                  s.CreatedAt,
+		}
+		responses = append(responses, resp)
+	}
+
+	return responses, nil
 }

@@ -15,3 +15,7 @@ type BookingStatusHistory struct {
 	ChangeReason    *string   `json:"change_reason,omitempty" db:"change_reason" gorm:"type:text"`
 	StatusChangedAt time.Time `json:"status_changed_at" db:"status_changed_at" gorm:"default:CURRENT_TIMESTAMP"`
 }
+
+func (BookingStatusHistory) TableName() string {
+	return "tbl_booking_status_history"
+}

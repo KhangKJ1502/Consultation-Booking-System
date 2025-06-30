@@ -5,8 +5,6 @@ import (
 	"cbs_backend/utils/cache"
 	"context"
 
-	"github.com/google/uuid"
-
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -29,13 +27,20 @@ type IExperts interface {
 	GetAllsExpert(ctx context.Context) (*[]dtoexperts.GetAllExpertsRespone, error)
 	CreateExpertProfile(ctx context.Context, res dtoexperts.CreateProfileExpertRequest) (*dtoexperts.CreateProfileExpertResponse, error)
 	UpdateExpertProfile(ctx context.Context, res dtoexperts.UpdateProfileExpertRequest) (*dtoexperts.UpdateProfileExpertResponse, error)
-	GetExpertProfileDetails(ctx context.Context, expertid uuid.UUID) (*dtoexperts.ExpertFullDetailResponse, error)
+	GetExpertProfileDetails(ctx context.Context, expertid string) (*dtoexperts.ExpertFullDetailResponse, error)
 	//Delete
+
 	//Working hour
 	CreateWorkHour(ctx context.Context, req dtoexperts.CreateWorkingHourRequest) (*dtoexperts.CreateWorkingHourResponse, error)
 	UpdateWorkHour(ctx context.Context, req dtoexperts.UpdateWorkingHourRequest) (*dtoexperts.UpdateWorkingHourResponse, error)
-
-	//Unvailable
+	GetAllWorkHourByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllWorkingHourResponse, error)
+	//Unavailable Time
 	CreateUnavailableTime(ctx context.Context, req dtoexperts.CreateUnavailableTimeRequest) (*dtoexperts.CreateUnavailableTimeResponse, error)
 	UpdateUnavailableTime(ctx context.Context, req dtoexperts.UpdateUnavailableTimeRequest) (*dtoexperts.UpdateUnavailableTimeResponse, error)
+	GetAllUnavailableTimeByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllsExpertUnavailableTimeResponse, error)
+
+	//Expert Specializations
+	CreateExpertSpecialization(ctx context.Context, req dtoexperts.CreateSpecializationRequest) (*dtoexperts.CreateSpecializationResponse, error)
+	UpdateExpertSpecialization(ctx context.Context, req dtoexperts.UpdateExpertSpecializationRequest) (*dtoexperts.UpdateExpertSpecializationRespone, error)
+	GetAllExpertSpecializationByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllExpertSpecializationRespone, error)
 }

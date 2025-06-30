@@ -2,6 +2,11 @@ Kiểm tra cổng nào đang chạy: netstat -aon | findstr :5432
 Tìm tên tiến trình nào đang chạy: tasklist | findstr 13240
 tắt task: taskkill /PID 6688 /F
 
+Create : Method - POST 
+Update: Method - PUT 
+Get : Method - GET
+Delet : Method - DELETE
+
 User;
 Ping API: http://localhost:8899/ping/100 
 Register: http://localhost:8899/register 
@@ -13,4 +18,14 @@ Expert:
 Create Expert: http://localhost:8899/expert/v2/createExpert
 Update Expert: http://localhost:8899/expert/v2/update
 GetAll Expert: http://localhost:8899/expert/v1/getAllExpert 
-Get Expert Detail: http://localhost:8899/expert/v1/getDetail/d3549e2f-9571-44d1-b0f2-282db2143dd4
+Get Expert Detail: http://localhost:8899/expert/v1/getDetail/d3549e2f-9571-44d1-b0f2-282db2143dd4 
+
+Unvailable Time:
+Create Unvalable Time: http://localhost:8899/expert/v2/unavailableTime
+Update Unvalable Time: http://localhost:8899/expert/v2/unavailableTime
+Get Unvailable Time: http://localhost:8899/expert/v1/unavailableTime/:expertId
+
+Working Hour:
+Create Working Hour: http://localhost:8899/expert/v2/
+Update Working Hour: http://localhost:8899/expert/v2/unavailableTime
+Get Working Hour: http://localhost:8899/expert/v1/unavailableTime/:expertId

@@ -4,6 +4,9 @@ import (
 	"time"
 
 	"cbs_backend/internal/common"
+	entityBooking "cbs_backend/internal/modules/bookings/entity"
+	entityExpertProfile "cbs_backend/internal/modules/experts/entity"
+	entityUser "cbs_backend/internal/modules/users/entity"
 
 	"github.com/google/uuid"
 )
@@ -25,7 +28,11 @@ type PaymentTransaction struct {
 	TransactionCreatedAt  time.Time    `json:"transaction_created_at" db:"transaction_created_at" gorm:"default:CURRENT_TIMESTAMP"`
 
 	// // Relationships (optional)
-	// // Booking       *entityBooking.ConsultationBooking `json:"booking,omitempty" gorm:"foreignKey:BookingID;references:BookingID"`
-	// // User          *entityUser.User                   `json:"user,omitempty" gorm:"foreignKey:UserID;references:UserID"`
-	// ExpertProfile *entityExpertProfile.ExpertProfile `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
+	Booking       *entityBooking.ConsultationBooking `json:"booking,omitempty" gorm:"foreignKey:BookingID;references:BookingID"`
+	User          *entityUser.User                   `json:"user,omitempty" gorm:"foreignKey:UserID;references:UserID"`
+	ExpertProfile *entityExpertProfile.ExpertProfile `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
+}
+
+func (PaymentTransaction) TableName() string {
+	return "tbl_payment_transactions"
 }

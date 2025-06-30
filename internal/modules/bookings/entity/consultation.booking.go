@@ -39,3 +39,7 @@ type ConsultationBooking struct {
 	// Review              *ConsultationReview                `json:"review,omitempty" gorm:"foreignKey:BookingID"`
 	// PaymentTransactions []entityPayment.PaymentTransaction `json:"payment_transactions,omitempty" gorm:"foreignKey:BookingID"`
 }
+
+func (ConsultationBooking) TableName() string {
+	return "tbl_consultation_bookings"
+}

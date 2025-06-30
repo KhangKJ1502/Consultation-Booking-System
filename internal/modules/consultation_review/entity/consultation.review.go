@@ -1,6 +1,8 @@
 package entity
 
 import (
+	entityBooking "cbs_backend/internal/modules/bookings/entity"
+	entityUser "cbs_backend/internal/modules/users/entity"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,9 +21,13 @@ type ConsultationReview struct {
 	ReviewUpdatedAt time.Time `json:"review_updated_at" db:"review_updated_at" gorm:"default:CURRENT_TIMESTAMP"`
 
 	// // Relationships (optional preload)
-	// Booking       *entityBooking.ConsultationBooking `json:"booking,omitempty" gorm:"foreignKey:BookingID;references:BookingID"`
+	Booking *entityBooking.ConsultationBooking `json:"booking,omitempty" gorm:"foreignKey:BookingID;references:BookingID"`
 
-	// ReviewerUser  *entityUser.User                   `json:"reviewer_user,omitempty" gorm:"foreignKey:ReviewerUserID;references:UserID"`
+	ReviewerUser *entityUser.User `json:"reviewer_user,omitempty" gorm:"foreignKey:ReviewerUserID;references:UserID"`
 
 	// ExpertProfile *entityExpert.ExpertProfile        `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
+}
+
+func (ConsultationReview) TableName() string {
+	return "tbl_consultation_reviews"
 }

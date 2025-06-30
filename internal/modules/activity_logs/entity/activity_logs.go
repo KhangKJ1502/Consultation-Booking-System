@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"cbs_backend/internal/common"
+	"cbs_backend/internal/modules/users/entity"
 
 	"github.com/google/uuid"
 )
@@ -21,5 +22,9 @@ type ActivityLog struct {
 	LogCreatedAt     time.Time    `json:"log_created_at" db:"log_created_at" gorm:"default:CURRENT_TIMESTAMP"`
 
 	// Relationships
-	// User *UserEntity.User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+	User *entity.User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+}
+
+func (ActivityLog) TableName() string {
+	return "tbl_activity_logs"
 }
