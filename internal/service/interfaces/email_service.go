@@ -11,7 +11,7 @@ type EmailService interface {
 	SendPasswordReset(ctx context.Context, email string, resetToken string) error
 
 	// // Consultation-related emails
-	// SendConsultationBookingConfirmation(ctx context.Context, userID string, data ConsultationBookingData) error
+	SendConsultationBookingConfirmation(ctx context.Context, userID string, data ConsultationBookingData) error
 	// SendConsultationReminder(ctx context.Context, userID string, data ConsultationReminderData) error
 	// SendConsultationCancellation(ctx context.Context, userID string, data ConsultationCancellationData) error
 	// SendConsultationRescheduled(ctx context.Context, userID string, data ConsultationRescheduleData) error

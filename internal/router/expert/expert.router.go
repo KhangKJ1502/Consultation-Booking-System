@@ -21,7 +21,7 @@ func (er *ExpertRouter) InitExpertRouter(router *gin.RouterGroup) {
 		public.GET("/getDetail/:id", response.Wrap(expertCtrl.GetExpertProfileDetails))
 		public.GET("/workHour/:expertId", response.Wrap(expertCtrl.GetAllWorkHourByExpertID))
 		public.GET("/unavailableTime/:expertId", response.Wrap(expertCtrl.GetAllUnavailableTimeByExpertID))
-
+		public.GET("/price/:expertId", response.Wrap(expertCtrl.GetAllPriceByExpertID))
 		// 🆕 GET danh sách chuyên môn của chuyên gia
 		public.GET("/specialization/:expertId", response.Wrap(expertCtrl.GetAllExpertSpecializationByExpertID))
 	}
@@ -45,5 +45,9 @@ func (er *ExpertRouter) InitExpertRouter(router *gin.RouterGroup) {
 		// 🆕 Specialization Management
 		private.POST("/specialization", response.Wrap(expertCtrl.CreateExpertSpecialization))
 		private.PUT("/specialization", response.Wrap(expertCtrl.UpdateExpertSpecialization))
+
+		//Price Config
+		private.POST("/price", response.Wrap(expertCtrl.CreatePrice))
+		private.PUT("/price", response.Wrap(expertCtrl.UpdatePrice))
 	}
 }

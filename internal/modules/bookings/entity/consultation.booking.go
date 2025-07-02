@@ -3,6 +3,7 @@ package entity
 import (
 	"time"
 
+	// entityReview "cbs_backend/internal/modules/consultation_review/entity"
 	entityExpertProfile "cbs_backend/internal/modules/experts/entity"
 	entityUsers "cbs_backend/internal/modules/users/entity"
 
@@ -36,7 +37,7 @@ type ConsultationBooking struct {
 	ExpertProfile   entityExpertProfile.ExpertProfile `json:"expert_profile" gorm:"foreignKey:ExpertProfileID"`
 	CancelledByUser *entityUsers.User                 `json:"cancelled_by_user,omitempty" gorm:"foreignKey:CancelledByUserID"`
 	// StatusHistory []BookingStatusHistory `json:"status_history,omitempty" gorm:"foreignKey:BookingID"`
-	// Review              *ConsultationReview                `json:"review,omitempty" gorm:"foreignKey:BookingID"`
+	// Review *entityReview.ConsultationReview `json:"review,omitempty" gorm:"foreignKey:BookingID"`
 	// PaymentTransactions []entityPayment.PaymentTransaction `json:"payment_transactions,omitempty" gorm:"foreignKey:BookingID"`
 }
 

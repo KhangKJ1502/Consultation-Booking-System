@@ -134,7 +134,6 @@ func (ec *ExpertController) GetAllUnavailableTimeByExpertID(ctx *gin.Context) (r
 
 // -------------------- Specialization Controllers --------------------
 
-// Tạo mới specialization cho expert
 func (ec *ExpertController) CreateExpertSpecialization(ctx *gin.Context) (res interface{}, err error) {
 	var req dtoexperts.CreateSpecializationRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -148,7 +147,6 @@ func (ec *ExpertController) CreateExpertSpecialization(ctx *gin.Context) (res in
 	return newSpec, nil
 }
 
-// Cập nhật specialization
 func (ec *ExpertController) UpdateExpertSpecialization(ctx *gin.Context) (res interface{}, err error) {
 	var req dtoexperts.UpdateExpertSpecializationRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -162,7 +160,6 @@ func (ec *ExpertController) UpdateExpertSpecialization(ctx *gin.Context) (res in
 	return updatedSpec, nil
 }
 
-// Lấy danh sách specialization theo ExpertID
 func (ec *ExpertController) GetAllExpertSpecializationByExpertID(ctx *gin.Context) (res interface{}, err error) {
 	expertID := ctx.Param("expertId")
 	if expertID == "" {
@@ -174,4 +171,42 @@ func (ec *ExpertController) GetAllExpertSpecializationByExpertID(ctx *gin.Contex
 		return nil, response.NewAPIError(http.StatusBadRequest, "failed to get specializations", err.Error())
 	}
 	return specs, nil
+}
+
+// -----------Pricing Config Controller
+func (ec *ExpertController) CreatePrice(ctx *gin.Context) (res interface{}, err error) {
+	var req dtoexperts.CreatePricingConfigRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	resNewPrice, err := Expert().CreatePrice(ctx, req)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "create pricing config failed", err.Error())
+	}
+	return resNewPrice, nil
+}
+func (ec *ExpertController) UpdatePrice(ctx *gin.Context) (res interface{}, err error) {
+	var req dtoexperts.UpdatePricingConfigRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	resUpdatedPrice, err := Expert().UpdatePrice(ctx, req)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "update pricing config failed", err.Error())
+	}
+	return resUpdatedPrice, nil
+}
+func (ec *ExpertController) GetAllPriceByExpertID(ctx *gin.Context) (res interface{}, err error) {
+	expertID := ctx.Param("expertId")
+	if expertID == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Expert ID is required", "Expert ID parameter is missing")
+	}
+
+	pricingList, err := Expert().GetAllPriceByExpertID(ctx, expertID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "failed to get pricing config list", err.Error())
+	}
+	return pricingList, nil
 }

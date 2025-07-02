@@ -3,6 +3,7 @@ package initialize
 import (
 	"cbs_backend/global"
 	"cbs_backend/internal/middleware"
+	"cbs_backend/internal/modules/realtime"
 	routerAll "cbs_backend/internal/router"
 	"cbs_backend/pkg/response"
 	"net/http"
@@ -29,6 +30,8 @@ func InitRouter() *gin.Engine {
 	r.Use(middleware.ValidatorMiddleware())
 	// r.Use() // logging
 
+	//Thêm websocket vào
+	r.GET("/ws", realtime.WSHandler)
 	// r.Use() // limiter global
 	// r.Use(middlewares.Validator())      // middleware
 

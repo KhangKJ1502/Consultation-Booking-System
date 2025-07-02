@@ -11,7 +11,6 @@ import (
 	entityExpert "cbs_backend/internal/modules/experts/entity"
 	entityTemplate "cbs_backend/internal/modules/notification_template/entity"
 	entityPayment "cbs_backend/internal/modules/payment_transactions/entity"
-	entityPricing "cbs_backend/internal/modules/pricing_config/entity"
 	entityNotification "cbs_backend/internal/modules/system_notification/entity"
 	entitySystem "cbs_backend/internal/modules/system_setting/entity"
 	entityUser "cbs_backend/internal/modules/users/entity"
@@ -104,10 +103,6 @@ func MigrateDatabase(db *gorm.DB) error {
 		&entityLog.ActivityLog{},
 	}
 
-	expertDependentTables := []interface{}{
-		&entityPricing.PricingConfig{},
-	}
-
 	bookingRelatedTables := []interface{}{
 		&entityBooking.ConsultationBooking{},
 	}
@@ -125,7 +120,6 @@ func MigrateDatabase(db *gorm.DB) error {
 	}{
 		{"Independent tables", independentTables},
 		{"User dependent tables", userDependentTables},
-		{"Expert dependent tables", expertDependentTables},
 		{"Booking related tables", bookingRelatedTables},
 		{"Booking dependent tables", bookingDependentTables},
 	}

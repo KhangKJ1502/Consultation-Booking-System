@@ -2,6 +2,7 @@ package entity
 
 import (
 	entityBooking "cbs_backend/internal/modules/bookings/entity"
+	entityExpert "cbs_backend/internal/modules/experts/entity"
 	entityUser "cbs_backend/internal/modules/users/entity"
 	"time"
 
@@ -25,7 +26,7 @@ type ConsultationReview struct {
 
 	ReviewerUser *entityUser.User `json:"reviewer_user,omitempty" gorm:"foreignKey:ReviewerUserID;references:UserID"`
 
-	// ExpertProfile *entityExpert.ExpertProfile        `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
+	ExpertProfile *entityExpert.ExpertProfile `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
 }
 
 func (ConsultationReview) TableName() string {

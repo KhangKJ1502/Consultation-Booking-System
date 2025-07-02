@@ -39,6 +39,8 @@ func (h *EventHandler) HandleMessage(message *sarama.ConsumerMessage) error {
 		return h.handleUserEvent(message.Value)
 	case "user-notifications":
 		return h.handleNotificationEvent(message.Value)
+	case "booking-events":
+		return h.handleBoongkingsEvent(message.Value)
 	default:
 		log.Printf("⚠️ Unknown topic: %s", message.Topic)
 	}
@@ -173,4 +175,95 @@ func (h *EventHandler) handleProfileUpdatedNotification(event NotificationEvent)
 	// Có thể gửi email, push notification, etc.
 	log.Printf("✅ Profile updated notification processed for user: %s", event.UserID)
 	return nil
+}
+
+// /---------------------------- Booking Service ---------------------\
+// handleBookingEvent - Xử lý Booking events
+func (h *EventHandler) handleBoongkingsEvent(data []byte) error {
+	log.Printf("📝 Raw booking event: %s", string(data))
+
+	// First try to parse as direct booking event
+	var bookingEvent map[string]interface{}
+	if err := json.Unmarshal(data, &bookingEvent); err != nil {
+		log.Printf("❌ Failed to unmarshal booking event: %v", err)
+		return err
+	}
+
+	// Check if it's a direct booking event or notification event
+	if eventType, exists := bookingEvent["event_type"].(string); exists {
+		// Direct booking event format
+		switch eventType {
+		case "booking_created":
+			return h.handleBookingCreated(data)
+		// case "booking_updated":
+		// 	return h.handleBookingUpdated(data)
+		// case "booking_cancelled":
+		// 	return h.handleBookingCancelled(data)
+		default:
+			log.Printf("⚠️ Unknown booking event type: %s", eventType)
+		}
+	} else {
+		// Try notification event format
+		var event NotificationEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			log.Printf("❌ Failed to unmarshal as notification event: %v", err)
+			return err
+		}
+
+		log.Printf("📧 Processing booking notification for user %s: %s", event.UserID, event.Type)
+
+		// Xử lý theo type notification
+		// switch event.Type {
+		// case "booking_confirmation":
+		// 	return h.handleBookingConfirmation(event)
+		// case "booking_reminder":
+		// 	return h.handleBookingReminder(event)
+		// case "booking_cancelled":
+		// 	return h.handleBookingCancelledNotification(event)
+		// default:
+		// 	log.Printf("⚠️ Unknown booking notification type: %s", event.Type)
+		// }
+	}
+
+	return nil
+}
+
+// handleBookingCreated - Xử lý khi booking được tạo
+func (h *EventHandler) handleBookingCreated(data []byte) error {
+	var event BookingCreatedEvent
+	if err := json.Unmarshal(data, &event); err != nil {
+		log.Printf("❌ Failed to unmarshal booking created event: %v", err)
+		return err
+	}
+
+	log.Printf("📝 New booking created: %s for user %s", event.BookingID, event.UserID)
+
+	// Tạo notification để gửi confirmation email
+	notification := NotificationEvent{
+		UserID:  event.UserID,
+		Type:    "booking_confirmation",
+		Title:   "Booking Confirmation",
+		Message: fmt.Sprintf("Your consultation booking %s has been confirmed.", event.BookingID),
+		Data: map[string]interface{}{
+			"user_id":             event.UserID,
+			"booking_id":          event.BookingID,
+			"doctor_name":         event.DoctorName,
+			"doctor_specialty":    event.DoctorSpecialty,
+			"consultation_date":   event.ConsultationDate,
+			"consultation_time":   event.ConsultationTime,
+			"duration":            event.Duration,
+			"consultation_type":   event.ConsultationType,
+			"location":            event.Location,
+			"meeting_link":        event.MeetingLink,
+			"amount":              event.Amount,
+			"payment_status":      event.PaymentStatus,
+			"booking_notes":       event.BookingNotes,
+			"cancellation_policy": event.CancellationPolicy,
+			"email":               event.Email,
+			"full_name":           event.FullName,
+		},
+	}
+
+	// Publish notification event để gửi email
+	return PublishNotificationEvent(notification)
 }

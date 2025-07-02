@@ -171,6 +171,41 @@ func (es *expertService) GetExpertProfileDetails(ctx context.Context, expertID s
 			EndTime:   ua.UnavailableEndDatetime,
 		})
 	}
+	// Load pricing configs
+	var pricings []entityexpert.PricingConfig
+	if err := es.db.WithContext(ctx).Where("expert_profile_id = ?", expertID).Find(&pricings).Error; err != nil {
+		return nil, fmt.Errorf("cannot fetch pricing configs: %w", err)
+	}
+	var pricingDTOs []dtoexperts.PricingConfigResponse
+	for _, p := range pricings {
+		pricingDTOs = append(pricingDTOs, dtoexperts.PricingConfigResponse{
+			PricingID:          p.PricingID.String(),
+			ServiceType:        p.ServiceType,
+			ConsultationType:   p.ConsultationType,
+			DurationMinutes:    p.DurationMinutes,
+			BasePrice:          p.BasePrice,
+			DiscountPercentage: p.DiscountPercentage,
+			IsActive:           p.IsActive,
+			ValidFrom:          p.ValidFrom,
+			ValidUntil:         p.ValidUntil,
+			PricingCreatedAt:   p.PricingCreatedAt,
+		})
+	}
+
+	// Load specializations
+	var specs []entityexpert.ExpertSpecialization
+	if err := es.db.WithContext(ctx).Where("expert_profile_id = ?", expertID).Find(&specs).Error; err != nil {
+		return nil, fmt.Errorf("cannot fetch specializations: %w", err)
+	}
+	var specDTOs []dtoexperts.GetAllExpertSpecializationRespone
+	for _, s := range specs {
+		specDTOs = append(specDTOs, dtoexperts.GetAllExpertSpecializationRespone{
+			SpecializationID:          s.SpecializationID.String(),
+			ExpertProfileID:           s.ExpertProfileID.String(),
+			SpecializationName:        s.SpecializationName,
+			SpecializationDescription: *s.SpecializationDescription,
+		})
+	}
 
 	// Response DTO
 	expertFromDB := &dtoexperts.ExpertFullDetailResponse{
@@ -189,13 +224,11 @@ func (es *expertService) GetExpertProfileDetails(ctx context.Context, expertID s
 		WorkingHours:       whDTOs,
 		UnavailableTimes:   uaDTOs,
 	}
-	// if err :=  utils.SetExpertDetail(ctx, es.redisCache, expertID.String(), expertFromDB); err != nil {
-	// 	es.logger.Warn("Failed to cache expert detail", zap.Error(err))
-	// }
-
+	if err := es.cache.SetExpertDetail(ctx, expertID, expertFromDB); err != nil {
+		es.logger.Warn("Failed to cache expert detail", zap.Error(err))
+	}
 	return expertFromDB, nil
 }
-
 func (es *expertService) UpdateExpertProfile(ctx context.Context, req dtoexperts.UpdateProfileExpertRequest) (*dtoexperts.UpdateProfileExpertResponse, error) {
 	// Parse ExpertProfileID from string to UUID
 	expertUUID, err := uuid.Parse(req.ExpertProfileID)
@@ -237,6 +270,30 @@ func (es *expertService) UpdateExpertProfile(ctx context.Context, req dtoexperts
 		AvatarURL: expert.User.AvatarURL,
 	}
 
+	// 5. Cache operations - use correct variable name
+	_ = es.cache.DeleteExpertDetail(ctx, expertUUID.String()) // Fixed: use expertUUID instead of undefined expertID
+
+	// Cache the updated expert detail
+	expertDetail := &dtoexperts.ExpertFullDetailResponse{
+		ExpertProfileID:    expert.ExpertProfileID.String(),
+		SpecializationList: expert.SpecializationList,
+		ExperienceYears:    *expert.ExperienceYears,
+		ExpertBio:          *expert.ExpertBio,
+		ConsultationFee:    *expert.ConsultationFee,
+		AverageRating:      expert.AverageRating,
+		TotalReviews:       expert.TotalReviews,
+		IsVerified:         expert.IsVerified,
+		LicenseNumber:      *expert.LicenseNumber,
+		AvailableOnline:    expert.AvailableOnline,
+		AvailableOffline:   expert.AvailableOffline,
+		User:               userDTO,
+	}
+
+	// Set the updated data in cache
+	if err := es.cache.SetExpertDetail(ctx, expertUUID.String(), expertDetail); err != nil {
+		es.logger.Warn("Failed to update expert cache", zap.Error(err))
+	}
+
 	return &dtoexperts.UpdateProfileExpertResponse{
 		ExpertProfileID:    expert.ExpertProfileID.String(),
 		SpecializationList: expert.SpecializationList,
@@ -252,7 +309,6 @@ func (es *expertService) UpdateExpertProfile(ctx context.Context, req dtoexperts
 		User:               userDTO,
 	}, nil
 }
-
 func (es *expertService) GetAllsExpert(ctx context.Context) (*[]dtoexperts.GetAllExpertsRespone, error) {
 	var experts []entityexpert.ExpertProfile
 
@@ -532,4 +588,100 @@ func (es *expertService) GetAllExpertSpecializationByExpertID(ctx context.Contex
 	}
 
 	return responses, nil
+}
+
+// Pricing
+func (es *expertService) CreatePrice(ctx context.Context, req dtoexperts.CreatePricingConfigRequest) (*dtoexperts.CreatePricingConfigResponse, error) {
+
+	ExpertID, err := uuid.Parse(req.ExpertProfileID)
+	if err != nil {
+		return nil, fmt.Errorf("expert id is empty")
+	}
+	pricingConfig := &entityexpert.PricingConfig{
+		ExpertProfileID:    &ExpertID,
+		ServiceType:        req.ServiceType,
+		ConsultationType:   req.ConsultationType,
+		DurationMinutes:    req.DurationMinutes,
+		BasePrice:          req.BasePrice,
+		DiscountPercentage: req.DiscountPercentage,
+		ValidFrom:          req.ValidFrom,
+		ValidUntil:         req.ValidUntil,
+	}
+	if err := es.db.WithContext(ctx).Create(&pricingConfig).Error; err != nil {
+		return nil, fmt.Errorf("failed to create Pricing Config: %w", err)
+	}
+	return &dtoexperts.CreatePricingConfigResponse{
+		PricingID:          pricingConfig.PricingID.String(),
+		ExpertProfileID:    pricingConfig.ExpertProfileID.String(),
+		ServiceType:        pricingConfig.ServiceType,
+		ConsultationType:   pricingConfig.ConsultationType,
+		DurationMinutes:    pricingConfig.DurationMinutes,
+		BasePrice:          pricingConfig.BasePrice,
+		DiscountPercentage: pricingConfig.DiscountPercentage,
+		IsActive:           pricingConfig.IsActive,
+		ValidFrom:          pricingConfig.ValidFrom,
+		ValidUntil:         pricingConfig.ValidUntil,
+		PricingCreatedAt:   pricingConfig.PricingCreatedAt,
+	}, nil
+}
+func (es *expertService) UpdatePrice(ctx context.Context, req dtoexperts.UpdatePricingConfigRequest) (*dtoexperts.UpdatePricingConfigResponse, error) {
+	var pricingConfig entityexpert.PricingConfig
+
+	// Tìm pricing theo ID
+	if err := es.db.WithContext(ctx).First(&pricingConfig, "pricing_id = ?", req.PricingID).Error; err != nil {
+		return nil, fmt.Errorf("pricing config not found: %w", err)
+	}
+
+	// Cập nhật các trường
+	pricingConfig.ServiceType = req.ServiceType
+	pricingConfig.ConsultationType = req.ConsultationType
+	pricingConfig.DurationMinutes = req.DurationMinutes
+	pricingConfig.BasePrice = req.BasePrice
+	pricingConfig.DiscountPercentage = req.DiscountPercentage
+	pricingConfig.ValidFrom = req.ValidFrom
+	pricingConfig.ValidUntil = req.ValidUntil
+	pricingConfig.IsActive = req.IsActive
+
+	// Save vào DB
+	if err := es.db.WithContext(ctx).Save(&pricingConfig).Error; err != nil {
+		return nil, fmt.Errorf("failed to update pricing config: %w", err)
+	}
+
+	return &dtoexperts.UpdatePricingConfigResponse{
+		PricingID: pricingConfig.PricingID.String(),
+	}, nil
+}
+
+func (es *expertService) GetAllPriceByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.PricingConfigResponse, error) {
+	if expertID == "" {
+		return nil, fmt.Errorf("expert Id must be not empty")
+	}
+
+	var pricingConfigs []entityexpert.PricingConfig
+	// Tìm tất cả pricing theo ExpertProfileID
+	if err := es.db.WithContext(ctx).
+		Where("expert_profile_id = ?", expertID).
+		Find(&pricingConfigs).Error; err != nil {
+		return nil, fmt.Errorf("failed to get pricing configs: %w", err)
+	}
+
+	// Mapping sang DTO
+	var res []*dtoexperts.PricingConfigResponse
+	for _, p := range pricingConfigs {
+		res = append(res, &dtoexperts.PricingConfigResponse{
+			PricingID:          p.PricingID.String(),
+			ExpertProfileID:    p.ExpertProfileID.String(),
+			ServiceType:        p.ServiceType,
+			ConsultationType:   p.ConsultationType,
+			DurationMinutes:    p.DurationMinutes,
+			BasePrice:          p.BasePrice,
+			DiscountPercentage: p.DiscountPercentage,
+			IsActive:           p.IsActive,
+			ValidFrom:          p.ValidFrom,
+			ValidUntil:         p.ValidUntil,
+			PricingCreatedAt:   p.PricingCreatedAt,
+		})
+	}
+
+	return res, nil
 }

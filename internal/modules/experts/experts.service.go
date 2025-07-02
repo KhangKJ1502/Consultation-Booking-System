@@ -34,6 +34,7 @@ type IExperts interface {
 	CreateWorkHour(ctx context.Context, req dtoexperts.CreateWorkingHourRequest) (*dtoexperts.CreateWorkingHourResponse, error)
 	UpdateWorkHour(ctx context.Context, req dtoexperts.UpdateWorkingHourRequest) (*dtoexperts.UpdateWorkingHourResponse, error)
 	GetAllWorkHourByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllWorkingHourResponse, error)
+
 	//Unavailable Time
 	CreateUnavailableTime(ctx context.Context, req dtoexperts.CreateUnavailableTimeRequest) (*dtoexperts.CreateUnavailableTimeResponse, error)
 	UpdateUnavailableTime(ctx context.Context, req dtoexperts.UpdateUnavailableTimeRequest) (*dtoexperts.UpdateUnavailableTimeResponse, error)
@@ -43,4 +44,9 @@ type IExperts interface {
 	CreateExpertSpecialization(ctx context.Context, req dtoexperts.CreateSpecializationRequest) (*dtoexperts.CreateSpecializationResponse, error)
 	UpdateExpertSpecialization(ctx context.Context, req dtoexperts.UpdateExpertSpecializationRequest) (*dtoexperts.UpdateExpertSpecializationRespone, error)
 	GetAllExpertSpecializationByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllExpertSpecializationRespone, error)
+
+	//PricingConfig
+	CreatePrice(ctx context.Context, req dtoexperts.CreatePricingConfigRequest) (*dtoexperts.CreatePricingConfigResponse, error)
+	UpdatePrice(ctx context.Context, req dtoexperts.UpdatePricingConfigRequest) (*dtoexperts.UpdatePricingConfigResponse, error)
+	GetAllPriceByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.PricingConfigResponse, error)
 }

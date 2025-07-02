@@ -30,14 +30,13 @@ type ExpertProfile struct {
 	User *entityUser.User `json:"user" gorm:"foreignKey:UserID;references:UserID"`
 
 	// Relationships
-	// User entity.User `json:"user" gorm:"foreignKey:UserID"`
 	WorkingHours     []ExpertWorkingHour     `json:"working_hours,omitempty" gorm:"foreignKey:ExpertProfileID"`
 	UnavailableTimes []ExpertUnavailableTime `json:"unavailable_times,omitempty" gorm:"foreignKey:ExpertProfileID"`
 	// Bookings            []ConsultationBooking   `json:"bookings,omitempty" gorm:"foreignKey:ExpertProfileID"`
 	// Reviews             []ConsultationReview    `json:"reviews,omitempty" gorm:"foreignKey:ExpertProfileID"`
 	Specializations []ExpertSpecialization `json:"specializations,omitempty" gorm:"foreignKey:ExpertProfileID"`
 	// PaymentTransactions []PaymentTransaction    `json:"payment_transactions,omitempty" gorm:"foreignKey:ExpertProfileID"`
-	// PricingConfigs      []PricingConfig         `json:"pricing_configs,omitempty" gorm:"foreignKey:ExpertProfileID"`
+	PricingConfigs []PricingConfig `json:"pricing_configs,omitempty" gorm:"foreignKey:ExpertProfileID"`
 }
 
 func (ExpertProfile) TableName() string {

@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"cbs_backend/internal/modules/experts/entity"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,7 +21,7 @@ type PricingConfig struct {
 	PricingCreatedAt   time.Time  `json:"pricing_created_at" db:"pricing_created_at" gorm:"default:CURRENT_TIMESTAMP"`
 
 	// // Relationship
-	ExpertProfile *entity.ExpertProfile `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
+	ExpertProfile *ExpertProfile `json:"expert_profile,omitempty" gorm:"foreignKey:ExpertProfileID;references:ExpertProfileID"`
 }
 
 func (PricingConfig) TableName() string {
