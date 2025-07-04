@@ -1,8 +1,6 @@
 package kafka
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -63,47 +61,25 @@ type BookingCreatedEvent struct {
 	FullName           string  `json:"full_name"`
 }
 
-// Event Publishers
-func PublishUserRegisteredEvent(event UserRegisteredEvent) error {
-	event.EventType = "user_registered"
-	event.RegisteredAt = time.Now()
-
-	data, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user registered event: %v", err)
-	}
-
-	return Publish("user-events", data)
-}
-
-func PublishUserProfileUpdatedEvent(event UserProfileUpdatedEvent) error {
-	event.EventType = "user_profile_updated"
-	event.UpdatedAt = time.Now()
-
-	data, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user profile updated event: %v", err)
-	}
-
-	return Publish("user-events", data)
-}
-
-func PublishNotificationEvent(event NotificationEvent) error {
-	event.CreatedAt = time.Now()
-
-	data, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal notification event: %v", err)
-	}
-
-	return Publish("user-notifications", data)
-}
-
-func PublishBookingEvent(event BookingEvent) error {
-	eventData, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal booking event: %w", err)
-	}
-	topic := "booking-events"
-	return Publish(topic, eventData)
+// BookingConfirmEvent
+type BookingConfirmEvent struct {
+	EventType          string    `json:"event_type"`
+	UserID             string    `json:"user_id"`
+	BookingID          string    `json:"booking_id"`
+	ExpertID           string    `json:"expert_id"`
+	DoctorName         string    `json:"doctor_name"`
+	DoctorSpecialty    string    `json:"doctor_specialty"`
+	ConsultationDate   string    `json:"consultation_date"`
+	ConsultationTime   string    `json:"consultation_time"`
+	Duration           int       `json:"duration"`
+	ConsultationType   string    `json:"consultation_type"`
+	Location           string    `json:"location"`
+	MeetingLink        string    `json:"meeting_link"`
+	Amount             float64   `json:"amount"`
+	PaymentStatus      string    `json:"payment_status"`
+	BookingNotes       string    `json:"booking_notes"`
+	CancellationPolicy string    `json:"cancellation_policy"`
+	Email              string    `json:"email"`
+	FullName           string    `json:"full_name"`
+	ConfirmedAt        time.Time `json:"confirmed_at"`
 }

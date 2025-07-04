@@ -1,0 +1,48 @@
+POST http://localhost:8899/register
+Body (raw JSON):
+{
+  "user_email": "user1@example.com",
+  "password": "Password123!",
+  "full_name": "Test User"
+} 
+POST http://localhost:8899/user/v1/login
+Body (raw JSON):
+{
+  "user_email": "user1@example.com",
+  "password": "Password123!"
+}
+
+POST http://localhost:8899/expert/v2/createExpert
+Headers:
+Authorization: Bearer {access_token}
+
+Body:
+{
+  "user_id": "{user_uuid_after_register}",
+  "bio": "Business coach with 5 years of experience",
+  "fields": ["startup", "marketing"],
+  "price_per_session": 500000
+} 
+POST http://localhost:8899/expert/v2/
+Headers:
+Authorization: Bearer {access_token}
+
+Body:
+{
+  "expert_id": "d3549e2f-9571-44d1-b0f2-282db2143dd4",
+  "weekday": 1,
+  "start_time": "09:00",
+  "end_time": "17:00"
+}
+
+POST http://localhost:8899/expert/v2/
+Headers:
+Authorization: Bearer {access_token}
+
+Body:
+{
+  "expert_id": "feceae68-3a54-4cd7-9c6f-1aba455588bd",
+  "weekday": 1,
+  "start_time": "09:00",
+  "end_time": "17:00"
+}

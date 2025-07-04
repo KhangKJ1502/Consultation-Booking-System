@@ -43,12 +43,13 @@ func InitRouter() *gin.Engine {
 	})
 	UserMainGroup := routerAll.RouterGroupApp.User
 	ExpertMainGroup := routerAll.RouterGroupApp.Expert
-
+	BookingMainGroup := routerAll.RouterGroupApp.Booking
 	// Nhóm route chính (có thể đặt prefix như /api)
 	apiGroup := r.Group("")
 	{
 		UserMainGroup.InitUserRouter(apiGroup) // Khởi tạo route user
 		ExpertMainGroup.InitExpertRouter(apiGroup)
+		BookingMainGroup.InitBookingRouter(apiGroup)
 	}
 
 	return r

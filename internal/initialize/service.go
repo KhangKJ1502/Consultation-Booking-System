@@ -1,6 +1,7 @@
 package initialize
 
 import (
+	"cbs_backend/internal/modules/bookings"
 	"cbs_backend/internal/modules/experts"
 	"cbs_backend/internal/modules/users"
 	"cbs_backend/internal/service/email"
@@ -18,6 +19,7 @@ func InitServices(
 	// 1. High‑level caches
 	userCache := cache.NewRedisUserCache(redis, log)
 	expertCache := cache.NewRedisExpertCache(redis)
+	bookingCache := cache.NewRedisBookingCache(redis, log)
 
 	// 2. Email
 	emailSvc := email.NewEmailManager(db, log)
@@ -26,6 +28,8 @@ func InitServices(
 	users.InitUserService(db, userCache, log)
 	// 4. Experts
 	experts.InitExpertService(db, expertCache, log)
+	//5.Booking
+	bookings.InitBookingService(db, bookingCache, log)
 }
 
 // func InitializeEmailService(db *gorm.DB, logger *zap.Logger) interfaces.EmailService {

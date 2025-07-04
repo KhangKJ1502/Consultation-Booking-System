@@ -3,7 +3,6 @@ package dtobookings
 import "time"
 
 type CreateBookingRequest struct {
-	BookingID        string    `json:"booking_id"`
 	UserID           string    `json:"user_id"`
 	ExpertProfileID  string    `json:"expert_profile_id"`
 	BookingDatetime  time.Time `json:"booking_datetime"`

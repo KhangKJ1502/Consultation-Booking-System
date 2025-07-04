@@ -7,6 +7,13 @@ Update: Method - PUT
 Get : Method - GET
 Delet : Method - DELETE
 
+HTTP Status Code nên sử dụng
+200 OK - Cancel thành công
+400 Bad Request - Validation error, không thể cancel
+401 Unauthorized - Không có quyền cancel
+404 Not Found - Booking không tồn tại
+409 Conflict - Booking đã bị cancel hoặc không thể cancel
+
 User;
 Ping API: http://localhost:8899/ping/100 
 Register: http://localhost:8899/register 
@@ -28,4 +35,13 @@ Get Unvailable Time: http://localhost:8899/expert/v1/unavailableTime/:expertId
 Working Hour:
 Create Working Hour: http://localhost:8899/expert/v2/
 Update Working Hour: http://localhost:8899/expert/v2/unavailableTime
-Get Working Hour: http://localhost:8899/expert/v1/unavailableTime/:expertId
+Get Working Hour: http://localhost:8899/expert/v1/unavailableTime/:expertId 
+
+Booking:
+Create Booking: http://localhost:8899/booking/v2/
+Update Booking Notes : http://localhost:8899/booking/v2/update-notes
+Cancel Booking: http://localhost:8899/booking/v2/cancel/:bookingID
+Confirm Booking: http://localhost:8899/booking/v2/confirm
+Get Available Slot : http://localhost:8899/booking/v1/available-slots 
+Get History Status: http://localhost:8899/booking/v2/status-history
+ 

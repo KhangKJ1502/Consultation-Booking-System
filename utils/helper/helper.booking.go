@@ -92,29 +92,22 @@ func (hb *HelperBooking) IsTimeSlotAvailable(ctx context.Context, expertID strin
 	return hb.CheckExpertAvailabilityDB(ctx, expertID, startTime, endTime)
 }
 
-func (hb *HelperBooking) GenerateAvailableSlots(workingHours []struct {
-	DayOfWeek int
-	StartTime time.Time
-	EndTime   time.Time
-}, existingBookings []entityBooking.ConsultationBooking, unavailableTimes []struct {
-	StartDatetime time.Time
-	EndDatetime   time.Time
-}, fromDate, toDate time.Time, slotDuration int) []dtobookings.TimeSlot {
-
+func (hb *HelperBooking) GenerateAvailableSlots(
+	workingHours []dtobookings.WorkingHourRow,
+	existingBookings []entityBooking.ConsultationBooking,
+	unavailableTimes []dtobookings.UnavailableTime,
+	fromDate, toDate time.Time,
+	slotDuration int,
+) []dtobookings.TimeSlot {
 	var slots []dtobookings.TimeSlot
 	slotDurationTime := time.Duration(slotDuration) * time.Minute
 
-	// Iterate through each day
-	for d := fromDate; d.Before(toDate.Add(24 * time.Hour)); d = d.Add(24 * time.Hour) {
+	// Loop through each day from fromDate to toDate (inclusive)
+	for d := fromDate; !d.After(toDate); d = d.Add(24 * time.Hour) {
 		dayOfWeek := int(d.Weekday())
 
 		// Find working hours for this day
-		var dayWorkingHours []struct {
-			DayOfWeek int
-			StartTime time.Time
-			EndTime   time.Time
-		}
-
+		var dayWorkingHours []dtobookings.WorkingHourRow
 		for _, wh := range workingHours {
 			if wh.DayOfWeek == dayOfWeek {
 				dayWorkingHours = append(dayWorkingHours, wh)
@@ -123,40 +116,42 @@ func (hb *HelperBooking) GenerateAvailableSlots(workingHours []struct {
 
 		// Generate slots for each working hour period
 		for _, wh := range dayWorkingHours {
-			startDateTime := time.Date(d.Year(), d.Month(), d.Day(),
-				wh.StartTime.Hour(), wh.StartTime.Minute(), 0, 0, d.Location())
-			endDateTime := time.Date(d.Year(), d.Month(), d.Day(),
-				wh.EndTime.Hour(), wh.EndTime.Minute(), 0, 0, d.Location())
+			// Convert TimeOfDay to full datetime
+			startDateTime := wh.StartTime.ToTime(d)
+			endDateTime := wh.EndTime.ToTime(d)
 
 			// Generate slots within working hours
 			for slotStart := startDateTime; slotStart.Add(slotDurationTime).Before(endDateTime) || slotStart.Add(slotDurationTime).Equal(endDateTime); slotStart = slotStart.Add(slotDurationTime) {
 				slotEnd := slotStart.Add(slotDurationTime)
 
-				// Skip past slots
-				if slotStart.Before(time.Now()) {
+				// Skip past slots with 15-minute buffer
+				if slotStart.Before(time.Now().Add(15 * time.Minute)) {
 					continue
 				}
 
-				// Check if slot conflicts with existing booking
+				// Check conflict with existing bookings
 				isConflict := false
 				for _, booking := range existingBookings {
 					bookingEnd := booking.BookingDatetime.Add(time.Duration(booking.DurationMinutes) * time.Minute)
-					if !(slotEnd.Before(booking.BookingDatetime) || slotStart.After(bookingEnd)) {
+					// Check if slot overlaps with booking
+					if slotStart.Before(bookingEnd) && slotEnd.After(booking.BookingDatetime) {
 						isConflict = true
 						break
 					}
 				}
 
-				// Check if slot conflicts with unavailable times
+				// Check conflict with unavailable times
 				if !isConflict {
 					for _, unavailable := range unavailableTimes {
-						if !(slotEnd.Before(unavailable.StartDatetime) || slotStart.After(unavailable.EndDatetime)) {
+						// Check if slot overlaps with unavailable time
+						if slotStart.Before(unavailable.EndDatetime) && slotEnd.After(unavailable.StartDatetime) {
 							isConflict = true
 							break
 						}
 					}
 				}
 
+				// Add slot if no conflict
 				if !isConflict {
 					slots = append(slots, dtobookings.TimeSlot{
 						StartTime:       slotStart,

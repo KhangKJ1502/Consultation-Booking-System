@@ -26,4 +26,10 @@ func Booking() IBookings {
 
 type IBookings interface {
 	CreateBooking(ctx context.Context, req dtobookings.CreateBookingRequest) (*dtobookings.CreateBookingResponse, error)
+	GetUpcomingBookingsForExpert(ctx context.Context, req dtobookings.GetUpcomingBookingForExpertRequest) ([]*dtobookings.BookingResponse, error)
+	CancelBooking(ctx context.Context, bookingID string, userID string) (*dtobookings.CancelResponse, error)
+	ConfirmBooking(ctx context.Context, req dtobookings.ConfirmBooking) (*dtobookings.ConfirmBookingResponse, error)
+	GetAvailableSlots(ctx context.Context, req dtobookings.GetAvailableSlotsRequest) (*dtobookings.GetAvailableSlotsResponse, error)
+	UpdateBookingNotes(ctx context.Context, req dtobookings.UpdateBookingNotesRequest) (*dtobookings.UpdateBookingNotesResponse, error)
+	GetBookingStatusHistory(ctx context.Context, req dtobookings.GetBookingStatusHistoryRequest) (*dtobookings.GetBookingStatusHistoryResponse, error)
 }

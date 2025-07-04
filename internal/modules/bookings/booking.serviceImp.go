@@ -4,7 +4,9 @@ import (
 	"cbs_backend/internal/kafka"
 	"cbs_backend/internal/modules/bookings/dtobookings"
 	entityBooking "cbs_backend/internal/modules/bookings/entity"
+	"cbs_backend/internal/modules/experts/entity"
 	"cbs_backend/internal/modules/realtime"
+	entityUser "cbs_backend/internal/modules/users/entity"
 	"cbs_backend/utils/cache"
 	utils "cbs_backend/utils/cache"
 	"cbs_backend/utils/helper"
@@ -211,36 +213,36 @@ func (bs *bookingservice) GetUpcomingBookingsForExpert(ctx context.Context, req 
 	return result, nil
 }
 
-func (bs *bookingservice) CancelBooking(ctx context.Context, bookingID string, userID string) error {
+func (bs *bookingservice) CancelBooking(ctx context.Context, bookingID string, userID string) (*dtobookings.CancelResponse, error) {
 	var booking entityBooking.ConsultationBooking
 
 	// Lấy thông tin booking
 	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", bookingID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("booking not found")
+			return nil, fmt.Errorf("booking not found")
 		}
-		return err
+		return nil, err
 	}
 
 	// Kiểm tra userID có quyền huỷ không (chỉ chủ sở hữu booking được huỷ)
 	if booking.UserID.String() != userID {
-		return fmt.Errorf("unauthorized: user does not own this booking")
+		return nil, fmt.Errorf("unauthorized: user does not own this booking")
 	}
 
 	// Kiểm tra thời gian: phải huỷ trước ít nhất 1 giờ
 	if time.Until(booking.BookingDatetime) < time.Hour {
-		return fmt.Errorf("cannot cancel booking less than 1 hour before the appointment")
+		return nil, fmt.Errorf("cannot cancel booking less than 1 hour before the appointment")
 	}
 
 	// Kiểm tra trạng thái booking
 	if booking.BookingStatus == "cancelled" {
-		return fmt.Errorf("booking is already cancelled")
+		return nil, fmt.Errorf("booking is already cancelled")
 	}
 
 	// Cập nhật trạng thái
 	booking.BookingStatus = "cancelled"
 	if err := bs.db.WithContext(ctx).Save(&booking).Error; err != nil {
-		return err
+		return nil, err
 	}
 	// Gửi notification realtime cho cả user và expert
 	go realtime.Send(
@@ -258,25 +260,31 @@ func (bs *bookingservice) CancelBooking(ctx context.Context, bookingID string, u
 		fmt.Printf("Notification sent to expert %s: booking %s cancelled\n", booking.ExpertProfileID.String(), booking.BookingID.String())
 	}()
 
-	return nil
+	return &dtobookings.CancelResponse{
+		BookingID:      bookingID,
+		CancelByUserID: userID,
+		Status:         booking.BookingStatus,
+		CancelledAt:    time.Now(),
+	}, nil
 }
-func (bs *bookingservice) ConfirmBooking(ctx context.Context, req dtobookings.ComfirmBooking) error {
+
+func (bs *bookingservice) ConfirmBooking(ctx context.Context, req dtobookings.ConfirmBooking) (*dtobookings.ConfirmBookingResponse, error) {
 	var booking entityBooking.ConsultationBooking
 	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", req.BookingID).Error; err != nil {
-		return err
+		return nil, err
 	}
 
 	if booking.ExpertProfileID.String() != req.ExpertID {
-		return fmt.Errorf("unauthorized")
+		return nil, fmt.Errorf("unauthorized")
 	}
 
 	if booking.BookingStatus != "pending" {
-		return fmt.Errorf("booking not in pending state")
+		return nil, fmt.Errorf("booking not in pending state")
 	}
 
 	booking.BookingStatus = "confirmed"
 	if err := bs.db.WithContext(ctx).Save(&booking).Error; err != nil {
-		return err
+		return nil, err
 	}
 
 	// Gửi notification với error handling
@@ -286,121 +294,193 @@ func (bs *bookingservice) ConfirmBooking(ctx context.Context, req dtobookings.Co
 
 		log.Printf("Attempting to send notification to user %s", userID)
 
-		if err := realtime.Send(userID, message); err != nil {
+		err := realtime.Send(userID, message)
+		if err != nil {
 			log.Printf("Failed to send realtime notification to user %s: %v", userID, err)
-			// TODO: Fallback - lưu vào database hoặc gửi email
+
+			// 🔁 Fallback: Gửi email thông qua Kafka
+			// Cần lấy thông tin user và expert từ DB
+			var user entityUser.User
+			var expert entity.ExpertProfile
+
+			// Lấy thông tin user
+			if err := bs.db.First(&user, "user_id = ?", booking.UserID).Error; err != nil {
+				log.Printf("Failed to get user info: %v", err)
+				return
+			}
+
+			// Lấy thông tin expert
+			if err := bs.db.First(&expert, "expert_profile_id = ?", booking.ExpertProfileID).Error; err != nil {
+				log.Printf("Failed to get expert info: %v", err)
+				return
+			}
+
+			// Tạo BookingConfirmEvent sử dụng helper function
+			event := kafka.CreateBookingConfirmEvent(
+				booking.UserID.String(),
+				booking.BookingID.String(),
+				booking.ExpertProfileID.String(),
+				user.UserEmail,
+				user.FullName,
+				expert.User.FullName,
+				booking.BookingDatetime.Format("2006-01-02"),
+				booking.BookingDatetime.Format("15:04"),
+				booking.DurationMinutes,
+				booking.ConsultationType,
+				getLocationString(booking.MeetingAddress),
+				getMeetingLinkString(booking.MeetingLink),
+				*booking.ConsultationFee,
+				booking.PaymentStatus,
+				getBookingNotesString(booking.UserNotes),
+				"Có thể hủy trước 24 giờ",
+			)
+
+			// Publish event sử dụng dedicated publisher
+			if err := kafka.PublishBookingConfirmEvent(event); err != nil {
+				log.Printf("Failed to publish booking confirm event: %v", err)
+			} else {
+				log.Printf("Booking confirm event published successfully for booking %s", booking.BookingID.String())
+			}
 		} else {
 			log.Printf("Notification sent successfully to user %s", userID)
 		}
 	}()
 
-	return nil
-}
-func (bs *bookingservice) GetAvailableSlots(ctx context.Context, req dtobookings.GetAvailableSlotsRequest) (*dtobookings.GetAvailableSlotsResponse, error) {
-	// Parse expert ID
-	expertID, err := uuid.Parse(req.ExpertProfileID)
-	if err != nil {
-		bs.logger.Error("Invalid expert profile ID format", zap.String("expertProfileID", req.ExpertProfileID), zap.Error(err))
-		return nil, fmt.Errorf("invalid expert profile ID format: %w", err)
+	var meetingLink, meetingAddress string
+
+	if booking.MeetingLink != nil {
+		meetingLink = *booking.MeetingLink
+	}
+	if booking.MeetingAddress != nil {
+		meetingAddress = *booking.MeetingAddress
 	}
 
-	// Validate date range
+	res := &dtobookings.ConfirmBookingResponse{
+		BookingID:       booking.BookingID.String(),
+		ExpertID:        booking.ExpertProfileID.String(),
+		UserID:          booking.UserID.String(),
+		Status:          booking.BookingStatus,
+		DurationMinutes: booking.DurationMinutes,
+		MeetingLink:     meetingLink,
+		MeetingAddress:  meetingAddress,
+		ConfirmAt:       time.Now(),
+	}
+
+	return res, nil
+}
+
+// Helper functions để xử lý pointer values
+func getLocationString(location *string) string {
+	if location != nil {
+		return *location
+	}
+	return ""
+}
+
+func getMeetingLinkString(link *string) string {
+	if link != nil {
+		return *link
+	}
+	return ""
+}
+
+func getBookingNotesString(notes *string) string {
+	if notes != nil {
+		return *notes
+	}
+	return ""
+}
+func (bs *bookingservice) GetAvailableSlots(
+	ctx context.Context,
+	req dtobookings.GetAvailableSlotsRequest,
+) (*dtobookings.GetAvailableSlotsResponse, error) {
+	// 1. Parse and validate input
+	expertID, err := uuid.Parse(req.ExpertProfileID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid expert_profile_id: %w", err)
+	}
+
 	if req.FromDate.After(req.ToDate) {
 		return nil, fmt.Errorf("from_date cannot be after to_date")
 	}
 
-	// Không cho xem slot quá khứ
 	if req.FromDate.Before(time.Now().Truncate(24 * time.Hour)) {
 		return nil, fmt.Errorf("cannot get slots for past dates")
 	}
 
-	// Lấy working hours của expert
-	var workingHours []struct {
-		DayOfWeek int
-		StartTime time.Time
-		EndTime   time.Time
-	}
-
-	err = bs.db.WithContext(ctx).
-		Table("tbl_expert_working_hours").
+	// 2. Get expert working hours
+	var workingHours []dtobookings.WorkingHourRow
+	if err := bs.db.WithContext(ctx).
+		Model(&entity.ExpertWorkingHour{}).
 		Select("day_of_week, start_time, end_time").
 		Where("expert_profile_id = ? AND is_active = true", expertID).
-		Scan(&workingHours).Error
-
-	if err != nil {
-		bs.logger.Error("Failed to get expert working hours", zap.Error(err))
+		Scan(&workingHours).Error; err != nil {
 		return nil, fmt.Errorf("failed to get expert working hours: %w", err)
 	}
 
 	if len(workingHours) == 0 {
 		return &dtobookings.GetAvailableSlotsResponse{
 			ExpertProfileID: req.ExpertProfileID,
+			FromDate:        req.FromDate,
+			ToDate:          req.ToDate,
 			AvailableSlots:  []dtobookings.TimeSlot{},
+			TotalSlots:      0,
 			Message:         "Expert has no working hours configured",
 		}, nil
 	}
 
-	// Lấy existing bookings trong khoảng thời gian
+	// 3. Get existing bookings that might conflict
 	var existingBookings []entityBooking.ConsultationBooking
-	err = bs.db.WithContext(ctx).
+	if err := bs.db.WithContext(ctx).
 		Where("expert_profile_id = ? AND booking_datetime >= ? AND booking_datetime <= ? AND booking_status IN (?)",
-			expertID, req.FromDate, req.ToDate.Add(24*time.Hour), []string{"pending", "confirmed"}).
-		Find(&existingBookings).Error
-
-	if err != nil {
-		bs.logger.Error("Failed to get existing bookings", zap.Error(err))
+			expertID, req.FromDate, req.ToDate.Add(24*time.Hour), []string{"confirmed", "pending"}).
+		Find(&existingBookings).Error; err != nil {
 		return nil, fmt.Errorf("failed to get existing bookings: %w", err)
 	}
 
-	// Lấy unavailable times
-	var unavailableTimes []struct {
-		StartDatetime time.Time
-		EndDatetime   time.Time
-	}
-
-	err = bs.db.WithContext(ctx).
-		Table("tbl_expert_unavailable_times").
+	// 4. Get unavailable times
+	var unavailableTimes []dtobookings.UnavailableTime
+	if err := bs.db.WithContext(ctx).
+		Model(&entity.ExpertUnavailableTime{}).
 		Select("unavailable_start_datetime, unavailable_end_datetime").
-		Where("expert_profile_id = ? AND unavailable_start_datetime <= ? AND unavailable_end_datetime >= ?",
+		Where("expert_profile_id = ? AND unavailable_start_datetime <= ? AND unavailable_end_datetime>= ?",
 			expertID, req.ToDate.Add(24*time.Hour), req.FromDate).
-		Scan(&unavailableTimes).Error
-
-	if err != nil {
-		bs.logger.Error("Failed to get unavailable times", zap.Error(err))
+		Scan(&unavailableTimes).Error; err != nil {
 		return nil, fmt.Errorf("failed to get unavailable times: %w", err)
 	}
 
-	// Generate available slots
-	availableSlots := bs.helper.GenerateAvailableSlots(workingHours, existingBookings, unavailableTimes, req.FromDate, req.ToDate, req.SlotDurationMinutes)
+	// 5. Generate available slots
+	availableSlots := bs.helper.GenerateAvailableSlots(
+		workingHours,
+		existingBookings,
+		unavailableTimes,
+		req.FromDate,
+		req.ToDate,
+		req.SlotDurationMinutes,
+	)
 
-	response := &dtobookings.GetAvailableSlotsResponse{
+	return &dtobookings.GetAvailableSlotsResponse{
 		ExpertProfileID: req.ExpertProfileID,
 		FromDate:        req.FromDate,
 		ToDate:          req.ToDate,
 		AvailableSlots:  availableSlots,
 		TotalSlots:      len(availableSlots),
-	}
-
-	bs.logger.Info("Generated available slots",
-		zap.String("expertID", req.ExpertProfileID),
-		zap.Int("totalSlots", len(availableSlots)))
-
-	return response, nil
+	}, nil
 }
 
-func (bs *bookingservice) UpdateBookingNotes(ctx context.Context, req dtobookings.UpdateBookingNotesRequest) error {
+func (bs *bookingservice) UpdateBookingNotes(ctx context.Context, req dtobookings.UpdateBookingNotesRequest) (*dtobookings.UpdateBookingNotesResponse, error) {
 	// Validate booking ID
 	bookingID, err := uuid.Parse(req.BookingID)
 	if err != nil {
 		bs.logger.Error("Invalid booking ID format", zap.String("bookingID", req.BookingID), zap.Error(err))
-		return fmt.Errorf("invalid booking ID format: %w", err)
+		return nil, fmt.Errorf("invalid booking ID format: %w", err)
 	}
 
 	// Validate user ID
 	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
 		bs.logger.Error("Invalid user ID format", zap.String("userID", req.UserID), zap.Error(err))
-		return fmt.Errorf("invalid user ID format: %w", err)
+		return nil, fmt.Errorf("invalid user ID format: %w", err)
 	}
 
 	var booking entityBooking.ConsultationBooking
@@ -408,41 +488,45 @@ func (bs *bookingservice) UpdateBookingNotes(ctx context.Context, req dtobooking
 	// Get booking
 	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", bookingID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("booking not found")
+			return nil, fmt.Errorf("booking not found")
 		}
 		bs.logger.Error("Failed to get booking", zap.Error(err))
-		return fmt.Errorf("failed to get booking: %w", err)
+		return nil, fmt.Errorf("failed to get booking: %w", err)
 	}
 
 	// Check authorization - chỉ user hoặc expert mới được update
 	canUpdate := false
 	updateField := ""
+	updatedBy := ""
 
 	if booking.UserID == userID {
 		canUpdate = true
 		updateField = "user_notes"
-	} else if booking.ExpertProfileID == userID { // Assuming expert can also update
+		updatedBy = "user"
+	} else if booking.ExpertProfileID == userID {
 		canUpdate = true
 		updateField = "expert_notes"
+		updatedBy = "expert"
 	}
 
 	if !canUpdate {
-		return fmt.Errorf("unauthorized: you don't have permission to update this booking")
+		return nil, fmt.Errorf("unauthorized: you don't have permission to update this booking")
 	}
 
 	// Không cho update nếu booking đã hoàn thành hoặc bị hủy
 	if booking.BookingStatus == "completed" || booking.BookingStatus == "cancelled" {
-		return fmt.Errorf("cannot update notes for completed or cancelled booking")
+		return nil, fmt.Errorf("cannot update notes for completed or cancelled booking")
 	}
 
 	// Không cho update nếu cuộc hẹn đã qua
 	if booking.BookingDatetime.Before(time.Now()) {
-		return fmt.Errorf("cannot update notes for past appointments")
+		return nil, fmt.Errorf("cannot update notes for past appointments")
 	}
 
 	// Update notes
+	now := time.Now()
 	updates := map[string]interface{}{
-		"booking_updated_at": time.Now(),
+		"booking_updated_at": now,
 	}
 
 	if updateField == "user_notes" {
@@ -453,7 +537,7 @@ func (bs *bookingservice) UpdateBookingNotes(ctx context.Context, req dtobooking
 
 	if err := bs.db.WithContext(ctx).Model(&booking).Updates(updates).Error; err != nil {
 		bs.logger.Error("Failed to update booking notes", zap.Error(err))
-		return fmt.Errorf("failed to update booking notes: %w", err)
+		return nil, fmt.Errorf("failed to update booking notes: %w", err)
 	}
 
 	// Log activity
@@ -462,9 +546,16 @@ func (bs *bookingservice) UpdateBookingNotes(ctx context.Context, req dtobooking
 		zap.String("userID", req.UserID),
 		zap.String("field", updateField))
 
-	return nil
-}
+	// Return success response
+	response := &dtobookings.UpdateBookingNotesResponse{
+		BookingID: req.BookingID,
+		UpdatedAt: now,
+		UpdatedBy: updatedBy,
+		Message:   "Booking notes updated successfully",
+	}
 
+	return response, nil
+}
 func (bs *bookingservice) GetBookingStatusHistory(ctx context.Context, req dtobookings.GetBookingStatusHistoryRequest) (*dtobookings.GetBookingStatusHistoryResponse, error) {
 	// Validate booking ID
 	bookingID, err := uuid.Parse(req.BookingID)

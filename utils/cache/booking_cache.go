@@ -43,13 +43,13 @@ type BookingCache interface {
 }
 
 type redisBookingCache struct {
-	client *redis.Client
+	redis  *RedisCache
 	logger *zap.Logger
 }
 
-func NewRedisBookingCache(client *redis.Client, logger *zap.Logger) BookingCache {
+func NewRedisBookingCache(redis *RedisCache, logger *zap.Logger) BookingCache {
 	return &redisBookingCache{
-		client: client,
+		redis:  redis,
 		logger: logger,
 	}
 }
@@ -118,7 +118,7 @@ func (r *redisBookingCache) CacheBooking(ctx context.Context, booking *BookingCa
 	}
 
 	// Cache với multiple keys để query dễ dàng
-	pipe := r.client.Pipeline()
+	pipe := r.redis.Client.Pipeline()
 
 	// 1. Cache booking chính
 	bookingKey := fmt.Sprintf("%s%s", bookingKeyPrefix, booking.BookingID)
@@ -148,7 +148,7 @@ func (r *redisBookingCache) CacheBooking(ctx context.Context, booking *BookingCa
 func (r *redisBookingCache) GetBooking(ctx context.Context, bookingID string) (*BookingCacheData, error) {
 	bookingKey := fmt.Sprintf("%s%s", bookingKeyPrefix, bookingID)
 
-	result, err := r.client.Get(ctx, bookingKey).Result()
+	result, err := r.redis.Client.Get(ctx, bookingKey).Result()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, nil // Booking not found in cache
@@ -177,7 +177,7 @@ func (r *redisBookingCache) DeleteBooking(ctx context.Context, bookingID string)
 		return nil // Booking not found
 	}
 
-	pipe := r.client.Pipeline()
+	pipe := r.redis.Client.Pipeline()
 
 	// 1. Xóa booking chính
 	bookingKey := fmt.Sprintf("%s%s", bookingKeyPrefix, bookingID)
@@ -204,7 +204,7 @@ func (r *redisBookingCache) GetExpertBookingsForDay(ctx context.Context, expertI
 	dailyKey := fmt.Sprintf("%s%s:%s", dailyBookingKeyPrefix, expertID, date.Format("2006-01-02"))
 
 	// Lấy tất cả booking IDs cho ngày
-	bookingIDs, err := r.client.SMembers(ctx, dailyKey).Result()
+	bookingIDs, err := r.redis.Client.SMembers(ctx, dailyKey).Result()
 	if err != nil {
 		if err == redis.Nil {
 			return []*BookingCacheData{}, nil
@@ -233,7 +233,7 @@ func (r *redisBookingCache) GetUserBookingsForDay(ctx context.Context, userID st
 	dailyKey := fmt.Sprintf("%s%s:%s", dailyBookingKeyPrefix, userID, date.Format("2006-01-02"))
 
 	// Lấy tất cả booking IDs cho ngày
-	bookingIDs, err := r.client.SMembers(ctx, dailyKey).Result()
+	bookingIDs, err := r.redis.Client.SMembers(ctx, dailyKey).Result()
 	if err != nil {
 		if err == redis.Nil {
 			return []*BookingCacheData{}, nil

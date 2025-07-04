@@ -72,6 +72,7 @@ func (us *userService) Register(ctx context.Context, req dtousergo.RegisterReque
 		UserEmail:    req.UserEmail,
 		PasswordHash: string(hashedPassword),
 		FullName:     req.FullName,
+		UserRole:     "user",
 	}
 
 	if err := us.db.WithContext(ctx).Create(&newUser).Error; err != nil {
