@@ -344,36 +344,149 @@ CREATE TRIGGER trg_tbl_notification_templates_updated_at
 CREATE TRIGGER trg_tbl_system_settings_updated_at 
     BEFORE UPDATE ON tbl_system_settings
     FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
+-- Tạo extension nếu chưa có
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Chèn dữ liệu cài đặt mặc định cho hệ thống
+-- 1. Cài đặt hệ thống mặc định
 INSERT INTO tbl_system_settings (setting_key, setting_value, setting_description, is_public) VALUES
 ('booking_reminder_minutes', '60', 'Số phút trước khi gửi nhắc lịch hẹn', false),
 ('max_booking_advance_days', '30', 'Số ngày tối đa có thể đặt lịch trước', true),
 ('min_cancellation_hours', '1', 'Số giờ tối thiểu trước khi có thể hủy lịch', true),
 ('default_consultation_duration', '60', 'Thời gian tư vấn mặc định (phút)', true),
 ('max_daily_bookings_per_user', '3', 'Số lịch tối đa mỗi người dùng có thể đặt trong ngày', false),
-('cleanup_old_bookings_days', '30', 'Số ngày lưu trữ lịch hẹn cũ', false);
+('cleanup_old_bookings_days', '30', 'Số ngày lưu trữ lịch hẹn cũ', false),
+('min_booking_advance_hours', '2', 'Số giờ tối thiểu phải đặt lịch trước', false),
+('booking_cancellation_deadline_hours', '24', 'Thời hạn hủy lịch trước giờ hẹn (giờ)', false),
+('system_maintenance_mode', 'false', 'Chế độ bảo trì hệ thống', true);
 
--- Chèn mẫu thông báo mặc định
-INSERT INTO tbl_notification_templates (template_name, notification_type, title_template, message_template, template_variables) VALUES
-('booking_created', 'booking', 'Đặt lịch tư vấn thành công', 'Bạn đã đặt lịch tư vấn với chuyên gia {{expert_name}} vào lúc {{booking_datetime}}', '{"expert_name": "string", "booking_datetime": "datetime"}'),
-('booking_confirmed', 'booking', 'Lịch tư vấn được xác nhận', 'Chuyên gia {{expert_name}} đã xác nhận lịch hẹn của bạn vào {{booking_datetime}}', '{"expert_name": "string", "booking_datetime": "datetime"}'),
-('booking_reminder', 'reminder', 'Nhắc nhở lịch tư vấn', 'Bạn có lịch hẹn với chuyên gia {{expert_name}} sau {{minutes}} phút nữa', '{"expert_name": "string", "minutes": "number"}'),
-('booking_cancelled', 'booking', 'Lịch tư vấn bị hủy', 'Lịch hẹn với chuyên gia {{expert_name}} vào {{booking_datetime}} đã bị hủy bỏ', '{"expert_name": "string", "booking_datetime": "datetime"}');
+-- 2. Mẫu thông báo mặc định
+INSERT INTO tbl_notification_templates (template_name, notification_type, title_template, message_template, template_variables, is_active) VALUES
+('booking_created', 'booking', 'Đặt lịch tư vấn thành công', 'Bạn đã đặt lịch tư vấn với chuyên gia {{expert_name}} vào lúc {{booking_datetime}}', '{"expert_name": "string", "booking_datetime": "datetime"}', true),
+('booking_confirmed', 'booking', 'Lịch tư vấn được xác nhận', 'Chuyên gia {{expert_name}} đã xác nhận lịch hẹn của bạn vào {{booking_datetime}}', '{"expert_name": "string", "booking_datetime": "datetime"}', true),
+('booking_reminder', 'reminder', 'Nhắc nhở lịch tư vấn', 'Bạn có lịch hẹn với chuyên gia {{expert_name}} sau {{minutes}} phút nữa', '{"expert_name": "string", "minutes": "number"}', true),
+('booking_cancelled', 'booking', 'Lịch tư vấn bị hủy', 'Lịch hẹn với chuyên gia {{expert_name}} vào {{booking_datetime}} đã bị hủy bỏ', '{"expert_name": "string", "booking_datetime": "datetime"}', true),
+('booking_confirmation', 'booking_confirmed', 'Lịch hẹn đã được xác nhận', 
+ 'Lịch hẹn {consultation_type} của bạn vào ngày {booking_date} lúc {booking_time} đã được chuyên gia {expert_name} xác nhận.', 
+ '["consultation_type", "booking_date", "booking_time", "expert_name"]'::jsonb, true),
+('booking_reminder_expert', 'booking_reminder', 'Nhắc nhở lịch hẹn', 
+ 'Bạn có lịch hẹn tư vấn vào ngày {booking_date} lúc {booking_time} với chuyên gia {expert_name}. Vui lòng chuẩn bị sẵn sàng.', 
+ '["booking_date", "booking_time", "expert_name"]'::jsonb, true);
 
--- Tạo dữ liệu mẫu để test
-INSERT INTO tbl_users (user_email, password_hash, full_name, user_role) VALUES
-('admin@consultation.vn', '$2a$10$example_hash_admin', 'Quản trị viên hệ thống', 'admin'),
-('chuyengia1@consultation.vn', '$2a$10$example_hash_expert1', 'TS. Nguyễn Văn An', 'expert'),
-('chuyengia2@consultation.vn', '$2a$10$example_hash_expert2', 'ThS. Trần Thị Bình', 'expert'),
-('nguoidung1@consultation.vn', '$2a$10$example_hash_user1', 'Lê Văn Chính', 'user'),
-('nguoidung2@consultation.vn', '$2a$10$example_hash_user2', 'Phạm Thị Dung', 'user');
+-- 3. Người dùng mẫu
+INSERT INTO tbl_users (user_id, user_email, password_hash, full_name, phone_number, gender, user_role, bio_description, is_active, email_verified) VALUES
+('a1234567-89ab-cdef-0123-456789abcdef'::uuid, 'admin@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Quản trị viên', '0901234567', 'other', 'admin', 'Quản trị viên hệ thống', true, true),
+('b1234567-89ab-cdef-0123-456789abcdef'::uuid, 'expert1@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Tiến sĩ Nguyễn Văn A', '0901234568', 'male', 'expert', 'Chuyên gia tâm lý học với 10 năm kinh nghiệm', true, true),
+('c1234567-89ab-cdef-0123-456789abcdef'::uuid, 'expert2@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Thạc sĩ Trần Thị B', '0901234569', 'female', 'expert', 'Chuyên gia dinh dưỡng và sức khỏe', true, true),
+('d1234567-89ab-cdef-0123-456789abcdef'::uuid, 'expert3@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Bác sĩ Lê Văn C', '0901234570', 'male', 'expert', 'Bác sĩ nội khoa 15 năm kinh nghiệm', true, true),
+('e1234567-89ab-cdef-0123-456789abcdef'::uuid, 'truongvankhang1502@gmail.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Phạm Văn D', '0901234571', 'male', 'user', 'Người dùng thường', true, true),
+('f1234567-89ab-cdef-0123-456789abcdef'::uuid, 'user2@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Hoàng Thị E', '0901234572', 'female', 'user', 'Người dùng thường', true, true),
+('a2234567-89ab-cdef-0123-456789abcdef'::uuid, 'user3@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Đặng Văn F', '0901234573', 'male', 'user', 'Người dùng thường', true, true),
+-- Thêm các user test không có UUID (để test tự sinh UUID)
+(uuid_generate_v4(), 'admin@consultation.vn', '$2a$10$example_hash_admin', 'Quản trị viên hệ thống', null, null, 'admin', null, true, true),
+(uuid_generate_v4(), 'chuyengia1@consultation.vn', '$2a$10$example_hash_expert1', 'TS. Nguyễn Văn An', null, null, 'expert', null, true, true),
+(uuid_generate_v4(), 'chuyengia2@consultation.vn', '$2a$10$example_hash_expert2', 'ThS. Trần Thị Bình', null, null, 'expert', null, true, true),
+(uuid_generate_v4(), 'nguoidung1@consultation.vn', '$2a$10$example_hash_user1', 'Lê Văn Chính', null, null, 'user', null, true, true),
+(uuid_generate_v4(), 'nguoidung2@consultation.vn', '$2a$10$example_hash_user2', 'Phạm Thị Dung', null, null, 'user', null, true, true);
 
--- Tạo hồ sơ chuyên gia mẫu
+-- 4. Hồ sơ chuyên gia
+INSERT INTO tbl_expert_profiles (expert_profile_id, user_id, specialization_list, experience_years, expert_bio, consultation_fee, average_rating, total_reviews, is_verified, license_number, available_online, available_offline) VALUES
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 'b1234567-89ab-cdef-0123-456789abcdef'::uuid, ARRAY['Tâm lý học', 'Tư vấn tâm lý', 'Trị liệu tâm lý'], 10, 'Tiến sĩ Tâm lý học, chuyên về tư vấn tâm lý cá nhân và gia đình. Có 10 năm kinh nghiệm trong lĩnh vực tâm lý học lâm sàng.', 500000, 4.5, 25, true, 'PSY-001-2024', true, true),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 'c1234567-89ab-cdef-0123-456789abcdef'::uuid, ARRAY['Dinh dưỡng', 'Tư vấn sức khỏe', 'Giảm cân'], 8, 'Thạc sĩ Dinh dưỡng, chuyên gia về tư vấn chế độ ăn uống và lối sống lành mạnh.', 400000, 4.2, 18, true, 'NUT-002-2024', true, false),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 'd1234567-89ab-cdef-0123-456789abcdef'::uuid, ARRAY['Nội khoa', 'Tư vấn sức khỏe', 'Khám bệnh tổng quát'], 15, 'Bác sĩ Nội khoa với 15 năm kinh nghiệm, chuyên về khám và điều trị các bệnh lý nội khoa.', 600000, 4.8, 40, true, 'DOC-003-2024', true, true);
+
+-- Hồ sơ chuyên gia test từ user test
 INSERT INTO tbl_expert_profiles (user_id, specialization_list, experience_years, expert_bio, consultation_fee, is_verified)
 SELECT u.user_id, ARRAY['Tâm lý học', 'Tư vấn tâm lý'], 8, 'Tiến sĩ Tâm lý học với 8 năm kinh nghiệm tư vấn', 500000.00, true
 FROM tbl_users u WHERE u.user_email = 'chuyengia1@consultation.vn';
-
 INSERT INTO tbl_expert_profiles (user_id, specialization_list, experience_years, expert_bio, consultation_fee, is_verified)
 SELECT u.user_id, ARRAY['Tư vấn nghề nghiệp', 'Coaching cuộc sống'], 5, 'Thạc sĩ chuyên về tư vấn nghề nghiệp và định hướng phát triển', 400000.00, true
 FROM tbl_users u WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+-- 5. Lịch làm việc chuyên gia
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active) VALUES
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '08:00:00', '12:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '14:00:00', '18:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 3, '08:00:00', '12:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 3, '14:00:00', '18:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 5, '08:00:00', '12:00:00', true),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 2, '09:00:00', '17:00:00', true),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 4, '09:00:00', '17:00:00', true),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 6, '09:00:00', '15:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '07:00:00', '11:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '13:00:00', '17:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 2, '07:00:00', '11:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 4, '07:00:00', '11:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 4, '13:00:00', '17:00:00', true);
+
+-- 6. Thời gian nghỉ chuyên gia
+INSERT INTO tbl_expert_unavailable_times (expert_profile_id, unavailable_start_datetime, unavailable_end_datetime, unavailable_reason) VALUES
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, '2024-12-25 00:00:00+07', '2024-12-25 23:59:59+07', 'Nghỉ Lễ Giáng Sinh'),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, '2024-12-30 00:00:00+07', '2025-01-02 23:59:59+07', 'Nghỉ Tết Dương Lịch'),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, '2024-12-31 00:00:00+07', '2025-01-01 23:59:59+07', 'Nghỉ Tết Dương Lịch');
+
+-- 7. Đặt lịch tư vấn
+INSERT INTO tbl_consultation_bookings (booking_id, user_id, expert_profile_id, booking_datetime, duration_minutes, consultation_type, booking_status, user_notes, consultation_fee, payment_status) VALUES
+('fb123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', '2024-12-20 10:00:00+07', 60, 'online', 'confirmed', 'Tôi muốn tư vấn về vấn đề căng thẳng công việc', 500000, 'paid'),
+('fc123456-89ab-cdef-0123-456789abcdef', 'f1234567-89ab-cdef-0123-456789abcdef', 'ec123456-89ab-cdef-0123-456789abcdef', '2024-12-22 14:00:00+07', 45, 'online', 'pending', 'Tôi muốn tư vấn về chế độ ăn kiêng', 400000, 'pending'),
+('fd123456-89ab-cdef-0123-456789abcdef', 'a2234567-89ab-cdef-0123-456789abcdef', 'ed123456-89ab-cdef-0123-456789abcdef', '2024-12-23 09:00:00+07', 30, 'offline', 'confirmed', 'Khám tổng quát sức khỏe', 600000, 'paid'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', '2024-12-18 15:00:00+07', 60, 'online', 'completed', 'Tư vấn về mối quan hệ gia đình', 500000, 'paid');
+
+-- 8. Lịch sử thay đổi trạng thái
+INSERT INTO tbl_booking_status_history (booking_id, old_status, new_status, changed_by_user_id, change_reason) VALUES
+('fb123456-89ab-cdef-0123-456789abcdef', 'pending', 'confirmed', 'b1234567-89ab-cdef-0123-456789abcdef', 'Chuyên gia xác nhận lịch hẹn'),
+('fd123456-89ab-cdef-0123-456789abcdef', 'pending', 'confirmed', 'd1234567-89ab-cdef-0123-456789abcdef', 'Chuyên gia xác nhận lịch hẹn'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'pending', 'confirmed', 'b1234567-89ab-cdef-0123-456789abcdef', 'Chuyên gia xác nhận lịch hẹn'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'confirmed', 'completed', 'b1234567-89ab-cdef-0123-456789abcdef', 'Hoàn thành buổi tư vấn');
+
+-- 9. Đánh giá tư vấn
+INSERT INTO tbl_consultation_reviews (booking_id, reviewer_user_id, expert_profile_id, rating_score, review_comment, is_anonymous, is_visible) VALUES
+('fe123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 5, 'Chuyên gia rất tận tâm và chuyên nghiệp. Tôi cảm thấy rất hài lòng với buổi tư vấn.', false, true);
+
+-- 10. Thông báo hệ thống
+INSERT INTO tbl_system_notifications (recipient_user_id, notification_type, notification_title, notification_message, is_read, delivery_methods) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'Lịch hẹn đã được xác nhận', 'Lịch hẹn tư vấn tâm lý của bạn vào ngày 20/12/2024 lúc 10:00 đã được chuyên gia xác nhận.', false, ARRAY['app', 'email']),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_pending', 'Lịch hẹn đang chờ xác nhận', 'Lịch hẹn tư vấn dinh dưỡng của bạn vào ngày 22/12/2024 lúc 14:00 đang chờ chuyên gia xác nhận.', false, ARRAY['app']);
+
+-- 11. Chuyên môn chuyên gia
+INSERT INTO tbl_expert_specializations (expert_profile_id, specialization_name, specialization_description, is_primary) VALUES
+('eb123456-89ab-cdef-0123-456789abcdef', 'Tâm lý học lâm sàng', 'Chuyên về điều trị các rối loạn tâm lý', true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'Tư vấn gia đình', 'Tư vấn các vấn đề trong gia đình', false),
+('eb123456-89ab-cdef-0123-456789abcdef', 'Tư vấn tâm lý trẻ em', 'Chuyên về tâm lý học trẻ em và thanh thiếu niên', false),
+('ec123456-89ab-cdef-0123-456789abcdef', 'Dinh dưỡng lâm sàng', 'Tư vấn dinh dưỡng cho bệnh nhân', true),
+('ec123456-89ab-cdef-0123-456789abcdef', 'Tư vấn giảm cân', 'Hướng dẫn chế độ ăn kiêng khoa học', false),
+('ed123456-89ab-cdef-0123-456789abcdef', 'Nội khoa tổng quát', 'Khám và điều trị các bệnh nội khoa', true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'Tư vấn sức khỏe', 'Tư vấn về lối sống và phòng bệnh', false);
+
+-- 12. Giao dịch thanh toán
+INSERT INTO tbl_payment_transactions (booking_id, user_id, expert_profile_id, amount, currency, payment_method, transaction_status, external_transaction_id, payment_gateway) VALUES
+('fb123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 500000, 'VND', 'momo', 'completed', 'MOMO_TXN_001', 'momo'),
+('fd123456-89ab-cdef-0123-456789abcdef', 'a2234567-89ab-cdef-0123-456789abcdef', 'ed123456-89ab-cdef-0123-456789abcdef', 600000, 'VND', 'zalopay', 'completed', 'ZALO_TXN_001', 'zalopay'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 500000, 'VND', 'bank_transfer', 'completed', 'BANK_TXN_001', 'vietcombank');
+
+-- 13. Cấu hình giá
+INSERT INTO tbl_pricing_configs (expert_profile_id, service_type, consultation_type, duration_minutes, base_price, discount_percentage, is_active) VALUES
+('eb123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 60, 500000, 0, true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'consultation', 'offline', 60, 600000, 0, true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 90, 700000, 10, true),
+('ec123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 45, 400000, 0, true),
+('ec123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 60, 500000, 0, true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 30, 400000, 0, true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'consultation', 'offline', 30, 500000, 0, true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'consultation', 'offline', 60, 800000, 0, true);
+
+-- 14. Refresh token
+INSERT INTO tbl_user_refresh_tokens (user_id, token_hash, expires_at) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'hashed_refresh_token_user1', '2024-12-31 23:59:59+07'),
+('f1234567-89ab-cdef-0123-456789abcdef', 'hashed_refresh_token_user2', '2024-12-31 23:59:59+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'hashed_refresh_token_expert1', '2024-12-31 23:59:59+07');
+
+-- 15. Phiên đăng nhập
+INSERT INTO tbl_user_sessions (user_id, session_token, device_info, ip_address, user_agent, expires_at) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'session_token_user1', 'iPhone 13', '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', '2024-12-20 23:59:59+07'),
+('f1234567-89ab-cdef-0123-456789abcdef', 'session_token_user2', 'Android Samsung', '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)', '2024-12-20 23:59:59+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'session_token_expert1', 'MacBook Pro', '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '2024-12-20 23:59:59+07');
+
+INSERT INTO tbl_notification_templates (template_name, notification_type, title_template, message_template, template_variables, is_active) VALUES
+('welcome_email', 'user', 'Đăng ký tài khoản thành công',
+'Chúc mừng {{full_name}}! Bạn đã đăng ký tài khoản thành công trên hệ thống. Hãy kiểm tra email {{user_email}} để xác thực tài khoản và bắt đầu sử dụng dịch vụ.',
+'["full_name", "user_email"]'::jsonb, true);

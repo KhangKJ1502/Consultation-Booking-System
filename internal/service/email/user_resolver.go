@@ -18,17 +18,14 @@ func NewUserResolver(db *gorm.DB, logger *zap.Logger) *UserResolver {
 }
 
 func (ur *UserResolver) GetUserEmail(userID string) string {
-	var user struct {
-		Email string `json:"email"`
-	}
-	err := ur.db.Table("users").Select("email").Where("user_id = ?", userID).First(&user).Error
+	var email string
+	err := ur.db.Table("tbl_users").Select("user_email").Where("user_id = ?", userID).Limit(1).Scan(&email).Error
 	if err != nil {
 		ur.logger.Error("Failed to get user email", zap.Error(err), zap.String("userID", userID))
 		return ""
 	}
-	return user.Email
+	return email
 }
-
 func (ur *UserResolver) GetDoctorEmail(doctorID string) string {
 	// TODO: Implement database query for doctor email
 	ur.logger.Warn("getDoctorEmail not implemented", zap.String("doctorID", doctorID))

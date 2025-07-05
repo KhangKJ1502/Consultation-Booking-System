@@ -37,7 +37,7 @@ func InitKafka() {
 	consumer, err := kafka.NewConsumer(
 		cfg.Brokers,
 		cfg.GroupID,
-		[]string{"user-events", "user-notifications"},
+		[]string{"user-events", "user-notifications", "booking-events"},
 		handler,
 	)
 	if err != nil {

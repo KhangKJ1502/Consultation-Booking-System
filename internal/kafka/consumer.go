@@ -60,6 +60,7 @@ func NewConsumer(brokers []string, groupID string, topics []string, handler Cons
 // Start starts consuming messages
 // 🚀 BẮT ĐẦU LẮNG NGHE: Goroutine chạy liên tục để consume messages
 func (c *Consumer) Start() {
+	log.Printf("🚀 Consumer starting, topics: %v", c.topics)
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -108,6 +109,7 @@ func (h *consumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error { retu
 func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for message := range claim.Messages() {
 		// 🎯 GỌI HANDLER: Delegate việc xử lý cho custom handler
+		log.Printf(">>> Got message from Kafka topic %s: %s", message.Topic, string(message.Value))
 		if err := h.handler.HandleMessage(message); err != nil {
 			log.Printf("❌ Failed to handle message: %v", err)
 			continue // ⚡ CONTINUE ON ERROR: Không stop toàn bộ consumer

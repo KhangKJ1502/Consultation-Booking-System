@@ -108,37 +108,3 @@ func PublishBookingCancelledEvent(event BookingEvent) error {
 
 	return Publish("booking-events", data)
 }
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-func CreateBookingConfirmEvent(
-	userID, bookingID, expertID, email, fullName, doctorName string,
-	consultationDate, consultationTime string,
-	duration int,
-	consultationType, location, meetingLink string,
-	amount float64,
-	paymentStatus, bookingNotes, cancellationPolicy string,
-) BookingConfirmEvent {
-	return BookingConfirmEvent{
-		EventType:          "booking_confirm",
-		UserID:             userID,
-		BookingID:          bookingID,
-		ExpertID:           expertID,
-		Email:              email,
-		FullName:           fullName,
-		DoctorName:         doctorName,
-		ConsultationDate:   consultationDate,
-		ConsultationTime:   consultationTime,
-		Duration:           duration,
-		ConsultationType:   consultationType,
-		Location:           location,
-		MeetingLink:        meetingLink,
-		Amount:             amount,
-		PaymentStatus:      paymentStatus,
-		BookingNotes:       bookingNotes,
-		CancellationPolicy: cancellationPolicy,
-		ConfirmedAt:        time.Now(),
-	}
-}

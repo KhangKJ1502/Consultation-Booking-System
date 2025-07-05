@@ -409,7 +409,7 @@ func (es *expertService) GetAllWorkHourByExpertID(ctx context.Context, expertID 
 
 	// Ví dụ dùng GORM: bảng working_hours có cột expert_id
 	if err := es.db.WithContext(ctx).
-		Table("tbl_working_hours").
+		Table("tbl_expert_working_hours").
 		Where("expert_id = ?", expertID).
 		Order("day_of_week, start_time").
 		Find(&workingHours).Error; err != nil {

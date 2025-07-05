@@ -128,9 +128,9 @@ func LoadConfigs() (*ConectionConfigs, error) { // Try to load .env file from mu
 		// },
 		KafkaCF: &KafkaConfig{
 			Brokers: getEnvSlice("KAFKA_BROKERS", []string{"kafka:9092"}),
-			GroupID: getEnv("KAFKA_GROUP_ID", "ecommece-app"),
+			GroupID: getEnv("KAFKA_GROUP_ID", "CB_System"),
 			Topics: KafkaTopics{
-				BookingCreated:   getEnv("KAFKA_TOPIC_ORDER_EVENTS", "order-events"),
+				BookingCreated:   getEnv("KAFKA_TOPIC_BOOKING_EVENTS", "booking-events"),
 				BookingUpdated:   getEnv("KAFKA_TOPIC_USER_NOTIFICATIONS", "user-notifications"),
 				BookingCancelled: getEnv("KAFKA_TOPIC_USER_NOTIFICATIONS", "user-notifications"),
 			},

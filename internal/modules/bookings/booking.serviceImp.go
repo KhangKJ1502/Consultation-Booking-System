@@ -289,60 +289,71 @@ func (bs *bookingservice) ConfirmBooking(ctx context.Context, req dtobookings.Co
 
 	// Gửi notification với error handling
 	go func() {
-		userID := booking.UserID.String()
-		message := fmt.Sprintf("Lịch hẹn %s của bạn đã được chuyên gia xác nhận!", booking.BookingID.String())
-
-		log.Printf("Attempting to send notification to user %s", userID)
-
-		err := realtime.Send(userID, message)
-		if err != nil {
-			log.Printf("Failed to send realtime notification to user %s: %v", userID, err)
-
-			// 🔁 Fallback: Gửi email thông qua Kafka
-			// Cần lấy thông tin user và expert từ DB
-			var user entityUser.User
-			var expert entity.ExpertProfile
-
-			// Lấy thông tin user
-			if err := bs.db.First(&user, "user_id = ?", booking.UserID).Error; err != nil {
-				log.Printf("Failed to get user info: %v", err)
-				return
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Recovered from panic in notification goroutine: %v", r)
 			}
+		}()
 
-			// Lấy thông tin expert
-			if err := bs.db.First(&expert, "expert_profile_id = ?", booking.ExpertProfileID).Error; err != nil {
-				log.Printf("Failed to get expert info: %v", err)
-				return
-			}
+		log.Printf(">>> Start notification goroutine for booking %s", booking.BookingID.String())
 
-			// Tạo BookingConfirmEvent sử dụng helper function
-			event := kafka.CreateBookingConfirmEvent(
-				booking.UserID.String(),
-				booking.BookingID.String(),
-				booking.ExpertProfileID.String(),
-				user.UserEmail,
-				user.FullName,
-				expert.User.FullName,
-				booking.BookingDatetime.Format("2006-01-02"),
-				booking.BookingDatetime.Format("15:04"),
-				booking.DurationMinutes,
-				booking.ConsultationType,
-				getLocationString(booking.MeetingAddress),
-				getMeetingLinkString(booking.MeetingLink),
-				*booking.ConsultationFee,
-				booking.PaymentStatus,
-				getBookingNotesString(booking.UserNotes),
-				"Có thể hủy trước 24 giờ",
-			)
+		// Lấy thông tin user và expert
+		var user entityUser.User
+		var expert entity.ExpertProfile
 
-			// Publish event sử dụng dedicated publisher
-			if err := kafka.PublishBookingConfirmEvent(event); err != nil {
-				log.Printf("Failed to publish booking confirm event: %v", err)
-			} else {
-				log.Printf("Booking confirm event published successfully for booking %s", booking.BookingID.String())
-			}
+		if err := bs.db.First(&user, "user_id = ?", booking.UserID).Error; err != nil {
+			log.Printf("Failed to get user info: %v", err)
+			return
+		}
+
+		// Preload User khi lấy expert
+		if err := bs.db.Preload("User").First(&expert, "expert_profile_id = ?", booking.ExpertProfileID).Error; err != nil {
+			log.Printf("Failed to get expert info: %v", err)
+			return
+		}
+
+		// Kiểm tra expert.User nil
+		doctorName := ""
+		if expert.User != nil {
+			doctorName = expert.User.FullName
 		} else {
-			log.Printf("Notification sent successfully to user %s", userID)
+			log.Printf("WARNING: expert.User is nil for expert_profile_id=%s", booking.ExpertProfileID.String())
+		}
+
+		// Kiểm tra ConsultationFee nil
+		var amount float64
+		if booking.ConsultationFee != nil {
+			amount = *booking.ConsultationFee
+		} else {
+			log.Printf("WARNING: ConsultationFee is nil for booking_id=%s", booking.BookingID.String())
+		}
+
+		// Tạo event với dữ liệu đầy đủ
+		event := kafka.CreateBookingConfirmEvent(
+			booking.UserID.String(),                      // userID
+			booking.BookingID.String(),                   // bookingID
+			booking.ExpertProfileID.String(),             // expertID
+			user.UserEmail,                               // email
+			user.FullName,                                // fullName
+			doctorName,                                   // doctorName
+			expert.SpecializationList,                    // doctorSpecialty (nếu có)
+			booking.BookingDatetime.Format("2006-01-02"), // consultationDate
+			booking.BookingDatetime.Format("15:04"),      // consultationTime
+			booking.DurationMinutes,                      // duration
+			booking.ConsultationType,                     // consultationType
+			getLocationString(booking.MeetingAddress),    // location
+			getMeetingLinkString(booking.MeetingLink),    // meetingLink
+			amount,                                   // amount
+			booking.PaymentStatus,                    // paymentStatus
+			getBookingNotesString(booking.UserNotes), // bookingNotes
+			"Có thể hủy trước 24 giờ",                // cancellationPolicy
+		)
+
+		// Publish event
+		if err := kafka.PublishBookingConfirmEvent(event); err != nil {
+			log.Printf("Failed to publish booking confirm event: %v", err)
+		} else {
+			log.Printf("✅ Booking confirm event published successfully for booking %s", booking.BookingID.String())
 		}
 	}()
 

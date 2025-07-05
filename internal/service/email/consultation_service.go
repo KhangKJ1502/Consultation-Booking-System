@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"cbs_backend/global"
 	"cbs_backend/internal/service/interfaces"
+
+	"go.uber.org/zap"
 )
 
 type ConsultationEmailService struct {
@@ -30,10 +33,13 @@ func NewConsultationEmailService(
 
 func (ces *ConsultationEmailService) SendBookingConfirmation(ctx context.Context, userID string, data interfaces.ConsultationBookingData) error {
 	email := ces.userResolver.GetUserEmail(userID)
-	template, err := ces.templateManager.GetTemplate("consultation_booking_confirmation")
+	template, err := ces.templateManager.GetTemplate("booking_confirmed")
 	if err != nil {
 		return ces.sendBookingConfirmationFallback(email, data)
 	}
+
+	global.Log.Error("flaied to get user email", zap.Error(err), zap.String("userID", userID))
+	fmt.Printf("%s, %s, %d", data.BookingID, data.DoctorName, data.Duration)
 
 	templateData := map[string]interface{}{
 		"BookingID":          data.BookingID,

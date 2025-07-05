@@ -68,7 +68,7 @@ type BookingConfirmEvent struct {
 	BookingID          string    `json:"booking_id"`
 	ExpertID           string    `json:"expert_id"`
 	DoctorName         string    `json:"doctor_name"`
-	DoctorSpecialty    string    `json:"doctor_specialty"`
+	DoctorSpecialty    []string  `json:"doctor_specialty"`
 	ConsultationDate   string    `json:"consultation_date"`
 	ConsultationTime   string    `json:"consultation_time"`
 	Duration           int       `json:"duration"`
@@ -82,4 +82,35 @@ type BookingConfirmEvent struct {
 	Email              string    `json:"email"`
 	FullName           string    `json:"full_name"`
 	ConfirmedAt        time.Time `json:"confirmed_at"`
+}
+
+// Hàm tạo BookingConfirmEvent
+func CreateBookingConfirmEvent(
+	userID, bookingID, expertID, email, fullName, doctorName string, doctorSpecialty []string,
+	consultationDate, consultationTime string,
+	duration int,
+	consultationType, location, meetingLink string,
+	amount float64,
+	paymentStatus, bookingNotes, cancellationPolicy string,
+) BookingConfirmEvent {
+	return BookingConfirmEvent{
+		UserID:             userID,
+		BookingID:          bookingID,
+		ExpertID:           expertID,
+		Email:              email,
+		FullName:           fullName,
+		DoctorName:         doctorName,
+		DoctorSpecialty:    doctorSpecialty,
+		ConsultationDate:   consultationDate,
+		ConsultationTime:   consultationTime,
+		Duration:           duration,
+		ConsultationType:   consultationType,
+		Location:           location,
+		MeetingLink:        meetingLink,
+		Amount:             amount,
+		PaymentStatus:      paymentStatus,
+		BookingNotes:       bookingNotes,
+		CancellationPolicy: cancellationPolicy,
+		ConfirmedAt:        time.Now(),
+	}
 }

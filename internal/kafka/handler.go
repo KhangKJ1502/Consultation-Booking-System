@@ -230,7 +230,7 @@ func (h *EventHandler) handleBookingNotification(event NotificationEvent) error 
 	log.Printf("📧 Processing booking notification for user %s: %s", event.UserID, event.Type)
 
 	switch event.Type {
-	case "booking_confirmation":
+	case "booking_confirmed":
 		return h.handleBookingConfirmationNotification(event)
 	case "booking_reminder":
 		return h.handleBookingReminder(event)
