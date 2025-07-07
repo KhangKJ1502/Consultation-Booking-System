@@ -28,9 +28,19 @@ type ConsultationReminderData struct {
 	TimeUntil        string // "24 hours", "1 hour", etc.
 }
 
-type ConsultationCancellationData struct {
+type ConsultationCancellationDataForUser struct {
 	BookingID         string
 	DoctorName        string
+	ConsultationDate  string
+	ConsultationTime  string
+	CancellationBy    string // "patient" or "doctor"
+	CancellationNote  string
+	RefundAmount      float64
+	RefundProcessDays int
+}
+type ConsultationCancellationDataForExpert struct {
+	BookingID         string
+	UserName          string
 	ConsultationDate  string
 	ConsultationTime  string
 	CancellationBy    string // "patient" or "doctor"

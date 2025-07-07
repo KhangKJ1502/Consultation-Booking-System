@@ -51,7 +51,8 @@ func (bc *BookingController) GetUpcomingBookingsForExpert(c *gin.Context) (res i
 }
 func (bc *BookingController) CancelBooking(c *gin.Context) (res interface{}, err error) {
 	bookingID := c.Param("bookingID")
-	userID := c.Query("userID")
+	// userID := c.GetHeader("userID")
+	userID := "e2a5ee96-4ffb-40e9-96be-12fff3576ff7"
 	if bookingID == "" || userID == "" {
 		bc.Logger.Error("Missing bookingID or userID", zap.Error(err))
 		return nil, response.NewAPIError(http.StatusBadRequest, "Missing bookingID or userID", err)

@@ -1,0 +1,36 @@
+🔄 Luồng xử lý sự kiện trong hệ thống Booking:
+BookingService
+Khi người dùng tạo hoặc cập nhật một cuộc hẹn, BookingService sẽ gọi hàm publish event (ví dụ: booking-created, booking-confirmed, ...).
+
+Publisher
+Publisher sẽ đóng gói dữ liệu thành một sự kiện (event) rồi chuyển tiếp đến Kafka Producer.
+
+Producer
+Gửi event lên Kafka topic tương ứng (ví dụ: booking-events).
+
+Handler (Consumer)
+Một consumer lắng nghe Kafka sẽ nhận event này và gọi HandleMessage(event).
+
+Trong HandleMessage, hệ thống sẽ kiểm tra event_type của sự kiện nhận được.
+
+Dựa vào event_type, nó sẽ chọn đúng NotifyHandler tương ứng.
+
+NotifyHandler
+NotifyHandler sẽ thực thi logic xử lý tương ứng với từng loại sự kiện, ví dụ:
+
+booking-created → gửi thông báo cho chuyên gia.
+
+booking-confirmed → gửi email xác nhận cho người dùng.
+
+NotifyHandler → Producer (Kafka)
+Sau khi xử lý, nếu cần tiếp tục đẩy thông báo (ví dụ gửi push/email/real-time), NotifyHandler sẽ tiếp tục publish event lên Kafka để các consumer khác xử lý.
+
+Consumer → Event Class → Gọi đúng handler
+
+Consumer tiếp theo sẽ nhận event này.
+
+Gọi event_class.HandleMessage(event).
+
+Dựa vào event_type, gọi đúng hàm xử lý trong notify_handler.
+
+Cuối cùng gọi đến email service để gửi mail .

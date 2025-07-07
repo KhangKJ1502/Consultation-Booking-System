@@ -4,6 +4,8 @@ Ai là người giữ khóa ngoại người đó ghi constain
 - Khi tạo khóa ngoại bang code thì sử dụng ":constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"
 *User muon su dụng thì Preload
 
+*Khi tạo dữ liệu jsonb trong DB {{ ._ }} nếu ko có cấu trúc z nó tưởng là hàm
+
 
 -- Consultation Booking System Database Schema
 -- PostgreSQL Database Design với tên bảng rõ ràng
@@ -361,17 +363,41 @@ INSERT INTO tbl_system_settings (setting_key, setting_value, setting_description
 
 -- 2. Mẫu thông báo mặc định
 INSERT INTO tbl_notification_templates (template_name, notification_type, title_template, message_template, template_variables, is_active) VALUES
-('booking_created', 'booking', 'Đặt lịch tư vấn thành công', 'Bạn đã đặt lịch tư vấn với chuyên gia {{expert_name}} vào lúc {{booking_datetime}}', '{"expert_name": "string", "booking_datetime": "datetime"}', true),
-('booking_confirmed', 'booking', 'Lịch tư vấn được xác nhận', 'Chuyên gia {{expert_name}} đã xác nhận lịch hẹn của bạn vào {{booking_datetime}}', '{"expert_name": "string", "booking_datetime": "datetime"}', true),
-('booking_reminder', 'reminder', 'Nhắc nhở lịch tư vấn', 'Bạn có lịch hẹn với chuyên gia {{expert_name}} sau {{minutes}} phút nữa', '{"expert_name": "string", "minutes": "number"}', true),
-('booking_cancelled', 'booking', 'Lịch tư vấn bị hủy', 'Lịch hẹn với chuyên gia {{expert_name}} vào {{booking_datetime}} đã bị hủy bỏ', '{"expert_name": "string", "booking_datetime": "datetime"}', true),
-('booking_confirmation', 'booking_confirmed', 'Lịch hẹn đã được xác nhận', 
- 'Lịch hẹn {consultation_type} của bạn vào ngày {booking_date} lúc {booking_time} đã được chuyên gia {expert_name} xác nhận.', 
- '["consultation_type", "booking_date", "booking_time", "expert_name"]'::jsonb, true),
-('booking_reminder_expert', 'booking_reminder', 'Nhắc nhở lịch hẹn', 
- 'Bạn có lịch hẹn tư vấn vào ngày {booking_date} lúc {booking_time} với chuyên gia {expert_name}. Vui lòng chuẩn bị sẵn sàng.', 
- '["booking_date", "booking_time", "expert_name"]'::jsonb, true);
-
+-- Welcome email
+('welcome_email', 'user', 'Đăng ký tài khoản thành công',
+'Chúc mừng {{ .full_name }}! Bạn đã đăng ký tài khoản thành công trên hệ thống. Hãy kiểm tra email {{ .user_email }} để xác thực tài khoản và bắt đầu sử dụng dịch vụ.',
+'["full_name", "user_email"]'::jsonb, true),
+-- Booking created
+('booking_created', 'booking', 'Đặt lịch tư vấn thành công',
+'Bạn đã đặt lịch tư vấn với chuyên gia {{ .expert_name }} vào lúc {{ .booking_datetime }}',
+'{"expert_name": "string", "booking_datetime": "datetime"}', true),
+-- Booking confirmed
+('booking_confirmed', 'booking', 'Lịch tư vấn được xác nhận',
+'Chuyên gia {{ .expert_name }} đã xác nhận lịch hẹn của bạn vào {{ .booking_datetime }}',
+'{"expert_name": "string", "booking_datetime": "datetime"}', true),
+-- Booking reminder
+('booking_reminder', 'reminder', 'Nhắc nhở lịch tư vấn',
+'Bạn có lịch hẹn với chuyên gia {{ .expert_name }} sau {{ .minutes }} phút nữa',
+'{"expert_name": "string", "minutes": "number"}', true),
+-- Booking cancelled
+('booking_cancelled', 'booking', 'Lịch tư vấn bị hủy',
+'Lịch hẹn với chuyên gia {{ .expert_name }} vào {{ .booking_datetime }} đã bị hủy bỏ',
+'{"expert_name": "string", "booking_datetime": "datetime"}', true),
+-- Booking confirmation
+('booking_confirmation', 'booking_confirmed', 'Lịch hẹn đã được xác nhận',
+'Lịch hẹn {{ .consultation_type }} của bạn vào ngày {{ .booking_date }} lúc {{ .booking_time }} đã được chuyên gia {{ .expert_name }} xác nhận.',
+'["consultation_type", "booking_date", "booking_time", "expert_name"]'::jsonb, true),
+-- Booking reminder for expert
+('booking_reminder_expert', 'booking_reminder', 'Nhắc nhở lịch hẹn',
+'Bạn có lịch hẹn tư vấn vào ngày {{ .booking_date }} lúc {{ .booking_time }} với chuyên gia {{ .expert_name }}. Vui lòng chuẩn bị sẵn sàng.',
+'["booking_date", "booking_time", "expert_name"]'::jsonb, true),
+ (
+    'booking_cancelled_expert',
+    'booking_cancelled',
+    'Lịch tư vấn bị hủy',
+    'Lịch hẹn với người dùng {{ .user_name }} vào {{ .booking_datetime }} đã bị hủy.',
+    '{"user_name": "string", "booking_datetime": "datetime"}'::jsonb
+);
 -- 3. Người dùng mẫu
 INSERT INTO tbl_users (user_id, user_email, password_hash, full_name, phone_number, gender, user_role, bio_description, is_active, email_verified) VALUES
 ('a1234567-89ab-cdef-0123-456789abcdef'::uuid, 'admin@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Quản trị viên', '0901234567', 'other', 'admin', 'Quản trị viên hệ thống', true, true),
@@ -486,7 +512,3 @@ INSERT INTO tbl_user_sessions (user_id, session_token, device_info, ip_address, 
 ('f1234567-89ab-cdef-0123-456789abcdef', 'session_token_user2', 'Android Samsung', '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)', '2024-12-20 23:59:59+07'),
 ('b1234567-89ab-cdef-0123-456789abcdef', 'session_token_expert1', 'MacBook Pro', '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '2024-12-20 23:59:59+07');
 
-INSERT INTO tbl_notification_templates (template_name, notification_type, title_template, message_template, template_variables, is_active) VALUES
-('welcome_email', 'user', 'Đăng ký tài khoản thành công',
-'Chúc mừng {{full_name}}! Bạn đã đăng ký tài khoản thành công trên hệ thống. Hãy kiểm tra email {{user_email}} để xác thực tài khoản và bắt đầu sử dụng dịch vụ.',
-'["full_name", "user_email"]'::jsonb, true);

@@ -17,86 +17,169 @@ import (
 	"log"
 	"time"
 
+	"github.com/bsm/redislock"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type bookingservice struct {
-	db     *gorm.DB
-	cache  utils.BookingCache
-	logger *zap.Logger
-	helper *utilshelper.HelperBooking
+	db          *gorm.DB
+	cache       utils.BookingCache
+	logger      *zap.Logger
+	helper      *utilshelper.HelperBooking
+	redisLocker *redislock.Client
 }
 
-func NewBookingService(db *gorm.DB, cache cache.BookingCache, logger *zap.Logger) *bookingservice {
+func NewBookingService(db *gorm.DB, cache cache.BookingCache, logger *zap.Logger, redisLocker *redislock.Client) *bookingservice {
 	return &bookingservice{
-		db:     db,
-		cache:  cache,
-		logger: logger,
-		helper: helper.NewHelperBooking(db),
+		db:          db,
+		cache:       cache,
+		logger:      logger,
+		helper:      helper.NewHelperBooking(db),
+		redisLocker: redisLocker, // truyền vào đây!
 	}
 }
+
+/*
+	Thứ tự chuẩn xử lí
+
+Input validation - Kiểm tra tất cả input trước
+Calculate variables - Tính toán các biến cần thiết
+Business logic validation - Kiểm tra logic nghiệp vụ
+Create entity - Tạo đối tượng entity
+Database transaction - Thực hiện transaction DB
+Commit transaction - Commit trước khi làm side effects
+Cache operations - Cập nhật cache sau khi DB success
+Publish events - Publish event bất đồng bộ
+Send notifications - Gửi thông báo bất đồng bộ
+Build response - Tạo response object
+Log & return - Log thành công và trả về
+*/
 
 func (bs *bookingservice) CreateBooking(ctx context.Context, req dtobookings.CreateBookingRequest) (*dtobookings.CreateBookingResponse, error) {
-	// Validate booking time (không được đặt quá khứ)
-	if req.BookingDatetime.Before(time.Now()) {
+	now := time.Now()
+
+	// 1. Validate input
+	if req.BookingDatetime.Before(now) {
 		return nil, fmt.Errorf("cannot book appointment in the past")
 	}
-
-	// Validate duration (tối thiểu 15 phút, tối đa 4 giờ)
 	if req.DurationMinutes < 15 || req.DurationMinutes > 240 {
 		return nil, fmt.Errorf("invalid duration: must be between 15-240 minutes")
 	}
-
+	if req.BookingDatetime.Sub(now) < 15*time.Minute {
+		return nil, fmt.Errorf("cannot book less than 15 minutes before the appointment")
+	}
+	if req.BookingDatetime.After(now.Add(90 * 24 * time.Hour)) {
+		return nil, fmt.Errorf("cannot book appointment more than 90 days in advance")
+	}
 	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
-		bs.logger.Error("Invalid user ID format", zap.String("userID", req.UserID), zap.Error(err))
 		return nil, fmt.Errorf("invalid user ID format: %w", err)
 	}
-
 	expertID, err := uuid.Parse(req.ExpertProfileID)
 	if err != nil {
-		bs.logger.Error("Invalid expert profile ID format", zap.String("expertProfileID", req.ExpertProfileID), zap.Error(err))
 		return nil, fmt.Errorf("invalid expert profile ID format: %w", err)
 	}
 
+	// 2. Kiểm tra user/expert tồn tại, expert active
+	var user entityUser.User
+	if err := bs.db.WithContext(ctx).First(&user, "user_id = ?", userID).Error; err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	var expert entity.ExpertProfile
+	if err := bs.db.WithContext(ctx).First(&expert, "expert_profile_id = ?", expertID).Error; err != nil {
+		return nil, fmt.Errorf("expert not found")
+	}
+
+	// if !expert.User.IsActive || expert.User == nil {
+	// 	return nil, fmt.Errorf("expert is not active")
+	// }
+
+	// 3. Kiểm tra ngày đặt có nằm trong ngày làm việc của expert không
+	goWeekday := int(req.BookingDatetime.Weekday()) // Go: 0=Chủ nhật, 1=Thứ hai, ..., 6=Thứ bảy
+	dbWeekday := goWeekday + 1
+	if dbWeekday > 7 {
+		dbWeekday = 1 // Chủ nhật
+	}
+	var whCount int64
+	if err := bs.db.WithContext(ctx).Model(&entity.ExpertWorkingHour{}).
+		Where("expert_profile_id = ? AND day_of_week = ? AND is_active = true", expertID, dbWeekday).
+		Count(&whCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to check expert working hours: %w", err)
+	}
+	if whCount == 0 {
+		return nil, fmt.Errorf("expert does not work on this day")
+	}
+
+	// 4. Chặn spam đặt lịch liên tục
+	var recentCount int64
+	if err := bs.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).
+		Where("user_id = ? AND booking_created_at > ?", userID, now.Add(-1*time.Minute)).
+		Count(&recentCount).Error; err == nil && recentCount >= 3 {
+		return nil, fmt.Errorf("too many booking requests, please wait a moment")
+	}
+
+	// 5. Redis distributed lock theo slot (expert + time)
+	lockKey := fmt.Sprintf("booking:lock:%s:%s-%s", req.ExpertProfileID, req.BookingDatetime.Format(time.RFC3339), req.BookingDatetime.Add(time.Duration(req.DurationMinutes)*time.Minute).Format(time.RFC3339))
+	if bs.redisLocker == nil {
+		return nil, fmt.Errorf("redisLocker is not initialized")
+	}
+	lock, err := bs.redisLocker.Obtain(ctx, lockKey, 10*time.Second, &redislock.Options{
+		RetryStrategy: redislock.LimitRetry(redislock.LinearBackoff(100*time.Millisecond), 30),
+	})
+	if err == redislock.ErrNotObtained {
+		return nil, fmt.Errorf("another booking is being processed for this slot, please try again")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire booking lock: %w", err)
+	}
+	defer func() {
+		_ = lock.Release(ctx)
+	}()
+
+	// 6. Kiểm tra double booking và conflict trong DB (sau khi đã lock)
 	startTime := req.BookingDatetime
 	endTime := startTime.Add(time.Duration(req.DurationMinutes) * time.Minute)
 
-	// Cache checks with Redis
-	isAvailable, err := bs.cache.IsExpertAvailable(ctx, req.ExpertProfileID, startTime, endTime)
+	duplicate, err := bs.helper.CheckDuplicateBooking(ctx, req.UserID, req.ExpertProfileID, startTime, endTime)
 	if err != nil {
-		bs.logger.Warn("Cache check failed, falling back to database", zap.Error(err))
-		isAvailable, err = bs.helper.CheckExpertAvailabilityDB(ctx, req.ExpertProfileID, startTime, endTime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check expert availability: %w", err)
-		}
+		return nil, fmt.Errorf("failed to check duplicate booking: %w", err)
+	}
+	if duplicate {
+		return nil, fmt.Errorf("you have already booked this expert at this time")
 	}
 
-	if !isAvailable {
-		return nil, fmt.Errorf("expert is not available for the requested time slot")
-	}
-
-	hasConflict, err := bs.cache.HasConflictingBooking(ctx, req.UserID, startTime, endTime)
+	hasConflict, err := bs.helper.CheckUserConflictDB(ctx, req.UserID, startTime, endTime)
 	if err != nil {
-		bs.logger.Warn("Cache conflict check failed, falling back to database", zap.Error(err))
-		hasConflict, err = bs.helper.CheckUserConflictDB(ctx, req.UserID, startTime, endTime)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check user booking conflicts: %w", err)
-		}
+		return nil, fmt.Errorf("failed to check user booking conflicts: %w", err)
 	}
-
 	if hasConflict {
 		return nil, fmt.Errorf("user has a conflicting booking at the requested time")
 	}
-	realtime.Send(req.ExpertProfileID, "Bạn có booking mới!")
 
-	// Create booking
+	// 7. Transaction kiểm tra chuyên gia bị trùng lịch (FOR UPDATE)
+	tx := bs.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+	count, err := bs.helper.CheckExpertAvailabilityDB(ctx, req.ExpertProfileID, startTime, endTime)
+	if err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("failed to check expert availability: %w", err)
+	}
+	if count > 0 {
+		tx.Rollback()
+		return nil, fmt.Errorf("expert is not available for the requested time slot")
+	}
+
+	// 8. Tạo booking mới
 	newBooking := &entityBooking.ConsultationBooking{
 		UserID:           userID,
 		ExpertProfileID:  expertID,
-		BookingDatetime:  req.BookingDatetime,
+		BookingDatetime:  startTime,
 		DurationMinutes:  req.DurationMinutes,
 		ConsultationType: req.ConsultationType,
 		BookingStatus:    "pending",
@@ -104,61 +187,107 @@ func (bs *bookingservice) CreateBooking(ctx context.Context, req dtobookings.Cre
 		ConsultationFee:  req.ConsultationFee,
 		PaymentStatus:    "pending",
 	}
-
-	// Database transaction
-	tx := bs.db.WithContext(ctx).Begin()
 	if err := tx.Create(newBooking).Error; err != nil {
 		tx.Rollback()
-		bs.logger.Error("Failed to create booking", zap.Error(err))
 		return nil, fmt.Errorf("failed to create booking: %w", err)
 	}
-
-	// Cache booking in Redis
-	bookingCacheData := &cache.BookingCacheData{
-		BookingID:        newBooking.BookingID.String(),
-		UserID:           newBooking.UserID.String(),
-		ExpertProfileID:  newBooking.ExpertProfileID.String(),
-		BookingDatetime:  newBooking.BookingDatetime,
-		DurationMinutes:  newBooking.DurationMinutes,
-		BookingStatus:    newBooking.BookingStatus,
-		ConsultationType: newBooking.ConsultationType,
-	}
-
-	if err := bs.cache.CacheBooking(ctx, bookingCacheData); err != nil {
-		bs.logger.Warn("Failed to cache booking", zap.Error(err))
-	}
-
-	// Publish Kafka event
-	event := kafka.BookingEvent{
-		EventType: "booking-create",
-		BookingID: newBooking.BookingID.String(),
-		UserID:    newBooking.UserID.String(),
-		ExpertID:  newBooking.ExpertProfileID.String(),
-		Timestamp: time.Now(),
-		EventData: map[string]interface{}{
-			"consultation_type": newBooking.ConsultationType,
-			"booking_datetime":  newBooking.BookingDatetime,
-			"duration_minutes":  newBooking.DurationMinutes,
-			"consultation_fee":  newBooking.ConsultationFee,
-		},
-	}
-
-	if err := kafka.PublishBookingEvent(event); err != nil {
-		bs.logger.Warn("Failed to publish booking created event", zap.Error(err))
-	}
-
 	if err := tx.Commit().Error; err != nil {
-		bs.logger.Error("Failed to commit transaction", zap.Error(err))
-		return nil, fmt.Errorf("failed to commit booking creation: %w", err)
+		return nil, fmt.Errorf("failed to commit booking: %w", err)
 	}
-	// Gửi notification realtime cho chuyên gia (bất đồng bộ, sau khi commit)
-	go realtime.Send(
-		newBooking.ExpertProfileID.String(),
-		fmt.Sprintf("Bạn có booking mới! Mã: %s, Thời gian: %s",
+
+	// 9. Cập nhật cache (nếu có)
+	if bs.cache != nil {
+		_ = bs.cache.CacheBooking(ctx, &cache.BookingCacheData{
+			BookingID:        newBooking.BookingID.String(),
+			UserID:           newBooking.UserID.String(),
+			ExpertProfileID:  newBooking.ExpertProfileID.String(),
+			BookingDatetime:  newBooking.BookingDatetime,
+			DurationMinutes:  newBooking.DurationMinutes,
+			BookingStatus:    newBooking.BookingStatus,
+			ConsultationType: newBooking.ConsultationType,
+		})
+	}
+
+	// 10. Gửi event, notification, trả response (giữ nguyên như cũ)
+	go func() {
+		// Lấy thông tin user và expert
+		var user entityUser.User
+		var expert entity.ExpertProfile
+
+		if err := bs.db.First(&user, "user_id = ?", newBooking.UserID).Error; err != nil {
+			log.Printf("Failed to get user info: %v", err)
+			return
+		}
+
+		// Preload User khi lấy expert
+		if err := bs.db.Preload("User").First(&expert, "expert_profile_id = ?", newBooking.ExpertProfileID).Error; err != nil {
+			log.Printf("Failed to get expert info: %v", err)
+			return
+		}
+
+		// Lấy thông tin doctorName, doctorSpecialty, email, fullName
+		doctorName := ""
+		doctorSpecialty := []string{}
+		if expert.User != nil {
+			doctorName = expert.User.FullName
+		}
+		if expert.SpecializationList != nil {
+			doctorSpecialty = expert.SpecializationList
+		}
+		email := user.UserEmail
+		fullName := user.FullName
+
+		location := ""
+		if newBooking.MeetingAddress != nil {
+			location = *newBooking.MeetingAddress
+		}
+		meetingLink := ""
+		if newBooking.MeetingLink != nil {
+			meetingLink = *newBooking.MeetingLink
+		}
+		bookingNotes := ""
+		if newBooking.UserNotes != nil {
+			bookingNotes = *newBooking.UserNotes
+		}
+		amount := 0.0
+		if newBooking.ConsultationFee != nil {
+			amount = *newBooking.ConsultationFee
+		}
+
+		event := kafka.BookingCreatedEvent{
+			EventType:          "booking_confirmation",
+			UserID:             newBooking.UserID.String(),
+			BookingID:          newBooking.BookingID.String(),
+			ExpertID:           newBooking.ExpertProfileID.String(),
+			DoctorName:         doctorName,
+			DoctorSpecialty:    doctorSpecialty,
+			ConsultationDate:   newBooking.BookingDatetime.Format("2006-01-02"),
+			ConsultationTime:   newBooking.BookingDatetime.Format("15:04"),
+			Duration:           newBooking.DurationMinutes,
+			ConsultationType:   newBooking.ConsultationType,
+			Location:           location,
+			MeetingLink:        meetingLink,
+			Amount:             amount,
+			PaymentStatus:      newBooking.PaymentStatus,
+			BookingNotes:       bookingNotes,
+			CancellationPolicy: "Có thể hủy trước 24 giờ",
+			Email:              email,
+			FullName:           fullName,
+			ConfirmedAt:        time.Time{}, // Chưa xác nhận, để rỗng hoặc nil
+		}
+		if err := kafka.PublishBookingCreatedEvent(event); err != nil {
+			bs.logger.Warn("Failed to publish booking created event", zap.Error(err))
+		}
+	}()
+
+	// 5. (Tùy chọn) Gửi notification realtime cho expert
+	go func() {
+		message := fmt.Sprintf("Bạn có booking mới! Mã: %s, Thời gian: %s",
 			newBooking.BookingID.String(),
 			newBooking.BookingDatetime.Format("02/01/2006 15:04"),
-		),
-	)
+		)
+		_ = realtime.Send(newBooking.ExpertProfileID.String(), message)
+	}()
 
 	response := &dtobookings.CreateBookingResponse{
 		BookingID:        newBooking.BookingID.String(),
@@ -173,101 +302,8 @@ func (bs *bookingservice) CreateBooking(ctx context.Context, req dtobookings.Cre
 		ConsultationFee:  newBooking.ConsultationFee,
 		BookingCreatedAt: newBooking.BookingCreatedAt,
 	}
-
-	bs.logger.Info("Booking created successfully", zap.String("bookingID", response.BookingID))
 	return response, nil
 }
-
-func (bs *bookingservice) GetUpcomingBookingsForExpert(ctx context.Context, req dtobookings.GetUpcomingBookingForExpertRequest) ([]*dtobookings.BookingResponse, error) {
-	// Chỉ lấy các booking với trạng thái "pending", "confirmed" và nằm trong khoảng thời gian yêu cầu
-	var bookings []*entityBooking.ConsultationBooking
-	err := bs.db.WithContext(ctx).
-		Where("expert_profile_id = ? AND booking_datetime >= ? AND booking_datetime <= ? AND booking_status IN (?)",
-			req.ExpertID, req.From, req.To, []string{"pending", "confirmed"}).
-		Find(&bookings).Error
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Chuyển đổi dữ liệu từ entity sang DTO
-	var result []*dtobookings.BookingResponse
-	for _, booking := range bookings {
-		result = append(result, &dtobookings.BookingResponse{
-			BookingID:        booking.BookingID.String(),
-			ExpertProfileID:  booking.ExpertProfileID.String(),
-			BookingDatetime:  booking.BookingDatetime,
-			DurationMinutes:  booking.DurationMinutes,
-			ConsultationType: booking.ConsultationType,
-			BookingStatus:    booking.BookingStatus,
-			UserNotes:        booking.UserNotes,
-			ExpertNotes:      booking.ExpertNotes,
-			MeetingLink:      booking.MeetingLink,
-			MeetingAddress:   booking.MeetingAddress,
-			ConsultationFee:  booking.ConsultationFee,
-			PaymentStatus:    booking.PaymentStatus,
-			BookingCreatedAt: booking.BookingCreatedAt,
-		})
-	}
-
-	return result, nil
-}
-
-func (bs *bookingservice) CancelBooking(ctx context.Context, bookingID string, userID string) (*dtobookings.CancelResponse, error) {
-	var booking entityBooking.ConsultationBooking
-
-	// Lấy thông tin booking
-	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", bookingID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("booking not found")
-		}
-		return nil, err
-	}
-
-	// Kiểm tra userID có quyền huỷ không (chỉ chủ sở hữu booking được huỷ)
-	if booking.UserID.String() != userID {
-		return nil, fmt.Errorf("unauthorized: user does not own this booking")
-	}
-
-	// Kiểm tra thời gian: phải huỷ trước ít nhất 1 giờ
-	if time.Until(booking.BookingDatetime) < time.Hour {
-		return nil, fmt.Errorf("cannot cancel booking less than 1 hour before the appointment")
-	}
-
-	// Kiểm tra trạng thái booking
-	if booking.BookingStatus == "cancelled" {
-		return nil, fmt.Errorf("booking is already cancelled")
-	}
-
-	// Cập nhật trạng thái
-	booking.BookingStatus = "cancelled"
-	if err := bs.db.WithContext(ctx).Save(&booking).Error; err != nil {
-		return nil, err
-	}
-	// Gửi notification realtime cho cả user và expert
-	go realtime.Send(
-		booking.ExpertProfileID.String(),
-		fmt.Sprintf("Lịch hẹn %s đã bị hủy!", booking.BookingID.String()),
-	)
-	go realtime.Send(
-		booking.UserID.String(),
-		fmt.Sprintf("Lịch hẹn %s của bạn đã bị hủy!", booking.BookingID.String()),
-	)
-
-	// Gửi notification cho chuyên gia (placeholder, bạn có thể tích hợp message queue / websocket)
-	go func() {
-		// bs.notificationService.NotifyExpert(booking.ExpertID, "Booking has been cancelled", ...)
-		fmt.Printf("Notification sent to expert %s: booking %s cancelled\n", booking.ExpertProfileID.String(), booking.BookingID.String())
-	}()
-
-	return &dtobookings.CancelResponse{
-		BookingID:      bookingID,
-		CancelByUserID: userID,
-		Status:         booking.BookingStatus,
-		CancelledAt:    time.Now(),
-	}, nil
-}
-
 func (bs *bookingservice) ConfirmBooking(ctx context.Context, req dtobookings.ConfirmBooking) (*dtobookings.ConfirmBookingResponse, error) {
 	var booking entityBooking.ConsultationBooking
 	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", req.BookingID).Error; err != nil {
@@ -378,6 +414,178 @@ func (bs *bookingservice) ConfirmBooking(ctx context.Context, req dtobookings.Co
 	}
 
 	return res, nil
+}
+
+func (bs *bookingservice) GetUpcomingBookingsForExpert(ctx context.Context, req dtobookings.GetUpcomingBookingForExpertRequest) ([]*dtobookings.BookingResponse, error) {
+	// Chỉ lấy các booking với trạng thái "pending", "confirmed" và nằm trong khoảng thời gian yêu cầu
+	var bookings []*entityBooking.ConsultationBooking
+	err := bs.db.WithContext(ctx).
+		Where("expert_profile_id = ? AND booking_datetime >= ? AND booking_datetime <= ? AND booking_status IN (?)",
+			req.ExpertID, req.From, req.To, []string{"pending", "confirmed"}).
+		Find(&bookings).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Chuyển đổi dữ liệu từ entity sang DTO
+	var result []*dtobookings.BookingResponse
+	for _, booking := range bookings {
+		result = append(result, &dtobookings.BookingResponse{
+			BookingID:        booking.BookingID.String(),
+			ExpertProfileID:  booking.ExpertProfileID.String(),
+			BookingDatetime:  booking.BookingDatetime,
+			DurationMinutes:  booking.DurationMinutes,
+			ConsultationType: booking.ConsultationType,
+			BookingStatus:    booking.BookingStatus,
+			UserNotes:        booking.UserNotes,
+			ExpertNotes:      booking.ExpertNotes,
+			MeetingLink:      booking.MeetingLink,
+			MeetingAddress:   booking.MeetingAddress,
+			ConsultationFee:  booking.ConsultationFee,
+			PaymentStatus:    booking.PaymentStatus,
+			BookingCreatedAt: booking.BookingCreatedAt,
+		})
+	}
+
+	return result, nil
+}
+
+func (bs *bookingservice) CancelBooking(ctx context.Context, bookingID string, userID string) (*dtobookings.CancelResponse, error) {
+	var booking entityBooking.ConsultationBooking
+
+	// 1. Lấy thông tin booking
+	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", bookingID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("booking not found")
+		}
+		return nil, err
+	}
+
+	// 2. Kiểm tra userID có quyền huỷ không
+	if booking.UserID.String() != userID {
+		return nil, fmt.Errorf("unauthorized: user does not own this booking")
+	}
+
+	// 3. Kiểm tra trạng thái
+	if booking.BookingStatus == "completed" {
+		return nil, fmt.Errorf("cannot cancel a completed booking")
+	}
+	if booking.BookingStatus == "cancelled" {
+		return nil, fmt.Errorf("booking is already cancelled")
+	}
+
+	// 4. Kiểm tra thời gian hủy
+	if time.Until(booking.BookingDatetime) < time.Hour {
+		return nil, fmt.Errorf("cannot cancel booking less than 1 hour before the appointment")
+	}
+
+	// 5. Cập nhật trạng thái
+	booking.BookingStatus = "cancelled"
+	now := time.Now()
+	booking.CancelledAt = &now
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID format")
+	}
+	booking.CancelledByUserID = &userUUID
+	if err := bs.db.WithContext(ctx).Save(&booking).Error; err != nil {
+		return nil, err
+	}
+
+	// 6. Xóa cache
+	if bs.cache != nil {
+		_ = bs.cache.DeleteBooking(ctx, booking.BookingID.String())
+	}
+
+	// 7. Gửi notification realtime
+	go realtime.Send(booking.ExpertProfileID.String(), fmt.Sprintf("Lịch hẹn %s đã bị hủy!", booking.BookingID.String()))
+	go realtime.Send(booking.UserID.String(), fmt.Sprintf("Lịch hẹn %s của bạn đã bị hủy!", booking.BookingID.String()))
+
+	// 8. Gửi Kafka event
+	go func() {
+		var user entityUser.User
+		var expert entity.ExpertProfile
+
+		if err := bs.db.First(&user, "user_id = ?", booking.UserID).Error; err != nil {
+			log.Printf("❌ Failed to get user info: %v", err)
+			return
+		}
+		if err := bs.db.Preload("User").First(&expert, "expert_profile_id = ?", booking.ExpertProfileID).Error; err != nil {
+			log.Printf("❌ Failed to get expert info: %v", err)
+			return
+		}
+
+		// Mapping data
+		doctorName := ""
+		if expert.User != nil {
+			doctorName = expert.User.FullName
+		}
+		doctorSpecialty := expert.SpecializationList
+		location := ""
+		if booking.MeetingAddress != nil {
+			location = *booking.MeetingAddress
+		}
+		meetingLink := ""
+		if booking.MeetingLink != nil {
+			meetingLink = *booking.MeetingLink
+		}
+		amount := 0.0
+		if booking.ConsultationFee != nil {
+			amount = *booking.ConsultationFee
+		}
+		cancellationBy := "system"
+		if booking.CancelledByUserID != nil {
+			if *booking.CancelledByUserID == booking.UserID {
+				cancellationBy = "patient"
+			} else {
+				cancellationBy = "expert"
+			}
+		}
+		cancellationNote := ""
+		if booking.CancellationReason != nil {
+			cancellationNote = *booking.CancellationReason
+		}
+		refundAmount := 0.0 // bạn có thể thêm trường refund trong DB nếu cần
+		refundDays := 7     // giả định default xử lý trong 7 ngày
+		cancelledAt := now
+
+		event := kafka.BookingCancelledEvent{
+			EventType:         "booking_cancelled",
+			UserID:            booking.UserID.String(),
+			BookingID:         booking.BookingID.String(),
+			ExpertID:          booking.ExpertProfileID.String(),
+			DoctorName:        doctorName,
+			DoctorSpecialty:   doctorSpecialty,
+			ConsultationDate:  booking.BookingDatetime.Format("02-01-2006"),
+			ConsultationTime:  booking.BookingDatetime.Format("15:04"),
+			Duration:          booking.DurationMinutes,
+			ConsultationType:  booking.ConsultationType,
+			Location:          location,
+			MeetingLink:       meetingLink,
+			Amount:            amount,
+			PaymentStatus:     booking.PaymentStatus,
+			Email:             user.UserEmail,
+			FullName:          user.FullName,
+			CancellationBy:    cancellationBy,
+			CancellationNote:  cancellationNote,
+			RefundAmount:      refundAmount,
+			RefundProcessDays: refundDays,
+			CancelledAt:       cancelledAt,
+		}
+
+		if err := kafka.PublishBookingCancelledEvent(event); err != nil {
+			bs.logger.Warn("❌ Failed to publish booking cancelled event", zap.Error(err))
+		}
+	}()
+
+	// 9. Trả response
+	return &dtobookings.CancelResponse{
+		BookingID:      bookingID,
+		CancelByUserID: userID,
+		Status:         booking.BookingStatus,
+		CancelledAt:    now,
+	}, nil
 }
 
 // Helper functions để xử lý pointer values
@@ -567,6 +775,7 @@ func (bs *bookingservice) UpdateBookingNotes(ctx context.Context, req dtobooking
 
 	return response, nil
 }
+
 func (bs *bookingservice) GetBookingStatusHistory(ctx context.Context, req dtobookings.GetBookingStatusHistoryRequest) (*dtobookings.GetBookingStatusHistoryResponse, error) {
 	// Validate booking ID
 	bookingID, err := uuid.Parse(req.BookingID)

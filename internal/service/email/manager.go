@@ -52,5 +52,14 @@ func (em *EmailManager) SendPasswordReset(ctx context.Context, email string, res
 func (em *EmailManager) SendConsultationBookingConfirmation(ctx context.Context, userID string, data interfaces.ConsultationBookingData) error {
 	return em.consultationService.SendBookingConfirmation(ctx, userID, data)
 }
+func (em *EmailManager) SendConsultationBookingApprove(ctx context.Context, userID string, data interfaces.ConsultationBookingData) error {
+	return em.consultationService.SendBookingApprove(ctx, userID, data)
+}
+func (em *EmailManager) SendConsultationBookingCancelledForUser(ctx context.Context, userID string, data interfaces.ConsultationCancellationDataForUser) error {
+	return em.consultationService.SendBookingCancelledForUser(ctx, userID, data)
+}
+func (em *EmailManager) SendConsultationBookingCancelledForExpert(ctx context.Context, userID string, data interfaces.ConsultationCancellationDataForExpert) error {
+	return em.consultationService.SendBookingCancelledForExpert(ctx, userID, data)
+}
 
 // ... implement other interface methods

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"cbs_backend/internal/common"
+	"cbs_backend/internal/modules/users/entity"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -25,7 +26,7 @@ type SystemNotification struct {
 	NotificationCreatedAt time.Time      `json:"notification_created_at" db:"notification_created_at" gorm:"default:CURRENT_TIMESTAMP"`
 
 	// Relationships
-	// RecipientUser *entity.User `json:"recipient_user,omitempty" gorm:"foreignKey:RecipientUserID;references:UserID"`
+	RecipientUser *entity.User `json:"recipient_user,omitempty" gorm:"foreignKey:RecipientUserID;references:UserID"`
 }
 
 func (SystemNotification) TableName() string {

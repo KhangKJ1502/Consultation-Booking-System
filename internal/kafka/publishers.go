@@ -40,7 +40,6 @@ func PublishUserProfileUpdatedEvent(event UserProfileUpdatedEvent) error {
 
 func PublishNotificationEvent(event NotificationEvent) error {
 	event.CreatedAt = time.Now()
-
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal notification event: %v", err)
@@ -53,6 +52,7 @@ func PublishNotificationEvent(event NotificationEvent) error {
 // BOOKING EVENT PUBLISHERS
 // =============================================================================
 
+// Nếu Muốn nâng cao 1 hàm có thể sử dụng cho tất cả các phương thức Booking created, confirm.. thì sử dụng nó
 func PublishBookingEvent(event BookingEvent) error {
 	eventData, err := json.Marshal(event)
 	if err != nil {
@@ -62,8 +62,9 @@ func PublishBookingEvent(event BookingEvent) error {
 	return Publish("booking-events", eventData)
 }
 
+// Các hàm bên dưới dài dòng và riêng biệt để dễ hiểu luồng đi của code ...
 func PublishBookingCreatedEvent(event BookingCreatedEvent) error {
-	event.EventType = "booking_created"
+	event.EventType = "booking_confirmation"
 
 	data, err := json.Marshal(event)
 	if err != nil {
@@ -97,9 +98,8 @@ func PublishBookingUpdatedEvent(event BookingEvent) error {
 	return Publish("booking-events", data)
 }
 
-func PublishBookingCancelledEvent(event BookingEvent) error {
+func PublishBookingCancelledEvent(event BookingCancelledEvent) error {
 	event.EventType = "booking_cancelled"
-	event.Timestamp = time.Now()
 
 	data, err := json.Marshal(event)
 	if err != nil {

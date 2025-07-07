@@ -22,7 +22,6 @@ func InitRedis() *cache.RedisCache {
 		Password: cfg.Password,
 		DB:       0,
 	})
-
 	global.Redis = rdb
 	fmt.Printf("✅ Redis connected: %s:%s\n", cfg.Host, cfg.Port)
 	return cache.NewRedisCache(rdb)

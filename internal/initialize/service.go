@@ -7,6 +7,7 @@ import (
 	"cbs_backend/internal/service/email"
 	"cbs_backend/utils/cache"
 
+	"github.com/bsm/redislock"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -16,6 +17,8 @@ func InitServices(
 	redis *cache.RedisCache, // low‑level Redis cache
 	log *zap.Logger,
 ) {
+
+	redisLocker := redislock.New(redis.Client) // redis.Client là *redis.Client
 	// 1. High‑level caches
 	userCache := cache.NewRedisUserCache(redis, log)
 	expertCache := cache.NewRedisExpertCache(redis)
@@ -29,7 +32,7 @@ func InitServices(
 	// 4. Experts
 	experts.InitExpertService(db, expertCache, log)
 	//5.Booking
-	bookings.InitBookingService(db, bookingCache, log)
+	bookings.InitBookingService(db, bookingCache, log, redisLocker)
 }
 
 // func InitializeEmailService(db *gorm.DB, logger *zap.Logger) interfaces.EmailService {

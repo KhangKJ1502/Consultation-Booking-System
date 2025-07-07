@@ -33,8 +33,9 @@ func (tm *TemplateManager) GetTemplate(templateName string) (*entity.Notificatio
 	return &notifTemplate, nil
 }
 
+// Render nội dung từ template + data
 func (tm *TemplateManager) RenderTemplate(notifTemplate *entity.NotificationTemplate, data map[string]interface{}) (string, string, error) {
-	// Render title
+	// Title
 	titleTemplate, err := template.New("title").Parse(notifTemplate.TitleTemplate)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to parse title template: %v", err)
@@ -42,10 +43,10 @@ func (tm *TemplateManager) RenderTemplate(notifTemplate *entity.NotificationTemp
 
 	var titleBuf bytes.Buffer
 	if err := titleTemplate.Execute(&titleBuf, data); err != nil {
-		return "", "", fmt.Errorf("failed to execute title template: %v", err)
+		return "", "", fmt.Errorf("failed to execute title template: %v, data: %+v", err, data)
 	}
 
-	// Render body
+	// Body
 	bodyTemplate, err := template.New("body").Parse(notifTemplate.MessageTemplate)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to parse message template: %v", err)
@@ -53,7 +54,7 @@ func (tm *TemplateManager) RenderTemplate(notifTemplate *entity.NotificationTemp
 
 	var bodyBuf bytes.Buffer
 	if err := bodyTemplate.Execute(&bodyBuf, data); err != nil {
-		return "", "", fmt.Errorf("failed to execute message template: %v", err)
+		return "", "", fmt.Errorf("failed to execute message template: %v, data: %+v", err, data)
 	}
 
 	return titleBuf.String(), bodyBuf.String(), nil

@@ -2,6 +2,7 @@ package email
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"cbs_backend/global"
@@ -31,6 +32,48 @@ func NewConsultationEmailService(
 	}
 }
 
+func (ces *ConsultationEmailService) SendBookingApprove(ctx context.Context, userID string, data interfaces.ConsultationBookingData) error {
+	email := ces.userResolver.GetUserEmail(userID)
+	if email == "" {
+		global.Log.Error("User email not found", zap.String("userID", userID))
+		return fmt.Errorf("user email not found")
+	}
+
+	template, err := ces.templateManager.GetTemplate("booking_created")
+	if err != nil {
+		global.Log.Error("Failed to get template", zap.Error(err))
+		return ces.sendBookingConfirmationFallback(email, data)
+	}
+	//teamplateData bên phải là các thuộc tính trong db
+	templateData := map[string]interface{}{
+		"BookingID":          data.BookingID,
+		"expert_name":        data.DoctorName,
+		"DoctorSpecialty":    data.DoctorSpecialty,
+		"booking_datetime":   data.ConsultationDate,
+		"booking_time":       data.ConsultationTime,
+		"Duration":           data.Duration,
+		"ConsultationType":   data.ConsultationType,
+		"Location":           data.Location,
+		"MeetingLink":        data.MeetingLink,
+		"Amount":             FormatAmount(data.Amount),
+		"PaymentStatus":      data.PaymentStatus,
+		"BookingNotes":       data.BookingNotes,
+		"CancellationPolicy": data.CancellationPolicy,
+		"BookingURL":         fmt.Sprintf("%s/bookings/%s", ces.baseURL, data.BookingID),
+	}
+
+	// Log template data để debug
+	global.Log.Info("Rendering booking_created template", zap.Any("data", templateData))
+
+	subject, body, err := ces.templateManager.RenderTemplate(template, templateData)
+	if err != nil {
+		global.Log.Error("Get template failed render", zap.Error(err))
+		return ces.sendBookingConfirmationFallback(email, data)
+	}
+
+	return ces.sender.Send(email, subject, body)
+}
+
 func (ces *ConsultationEmailService) SendBookingConfirmation(ctx context.Context, userID string, data interfaces.ConsultationBookingData) error {
 	email := ces.userResolver.GetUserEmail(userID)
 	template, err := ces.templateManager.GetTemplate("booking_confirmed")
@@ -43,10 +86,10 @@ func (ces *ConsultationEmailService) SendBookingConfirmation(ctx context.Context
 
 	templateData := map[string]interface{}{
 		"BookingID":          data.BookingID,
-		"DoctorName":         data.DoctorName,
+		"expert_name":        data.DoctorName,
 		"DoctorSpecialty":    data.DoctorSpecialty,
-		"ConsultationDate":   data.ConsultationDate,
-		"ConsultationTime":   data.ConsultationTime,
+		"booking_datetime":   data.ConsultationDate,
+		"booking_time":       data.ConsultationTime,
 		"Duration":           data.Duration,
 		"ConsultationType":   data.ConsultationType,
 		"Location":           data.Location,
@@ -65,18 +108,106 @@ func (ces *ConsultationEmailService) SendBookingConfirmation(ctx context.Context
 
 	return ces.sender.Send(email, subject, body)
 }
+func (ces *ConsultationEmailService) SendBookingCancelledForUser(ctx context.Context, userID string, data interfaces.ConsultationCancellationDataForUser) error {
+	email := ces.userResolver.GetUserEmail(userID)
+	if email == "" {
+		global.Log.Error("failed to resolve user email", zap.String("userID", userID))
+		return errors.New("user email not found")
+	}
+
+	template, err := ces.templateManager.GetTemplate("booking_cancelled")
+	if err != nil {
+		// return ces.sendBookingConfirmationFallback(email, data)
+	}
+
+	templateData := map[string]interface{}{
+		"BookingID":         data.BookingID,
+		"expert_name":       data.DoctorName,
+		"booking_datetime":  data.ConsultationDate,
+		"booking_time":      data.ConsultationTime,
+		"CancellationNote":  data.CancellationNote,
+		"RefundAmount":      FormatAmount(data.RefundAmount),
+		"RefundProcessDays": data.RefundProcessDays,
+		"CancellationBy":    data.CancellationBy,
+	}
+
+	subject, body, err := ces.templateManager.RenderTemplate(template, templateData)
+	if err != nil {
+		// return ces.sendBookingConfirmationFallback(email, data)
+	}
+
+	return ces.sender.Send(email, subject, body)
+}
+
+func (ces *ConsultationEmailService) SendBookingCancelledForExpert(ctx context.Context, expertID string, data interfaces.ConsultationCancellationDataForExpert) error {
+	email := ces.userResolver.GetDoctorEmail(expertID)
+	if email == "" {
+		global.Log.Error("failed to resolve expert email", zap.String("expertID", expertID))
+		return errors.New("expert email not found")
+	}
+
+	template, err := ces.templateManager.GetTemplate("booking_cancelled_expert")
+	if err != nil {
+		// return ces.sendBookingConfirmationFallback(email, data)
+	}
+	templateData := map[string]interface{}{
+		"BookingID":         data.BookingID,
+		"expert_name":       data.UserName,
+		"booking_datetime":  data.ConsultationDate,
+		"booking_time":      data.ConsultationTime,
+		"CancellationNote":  data.CancellationNote,
+		"RefundAmount":      FormatAmount(data.RefundAmount),
+		"RefundProcessDays": data.RefundProcessDays,
+		"CancellationBy":    data.CancellationBy,
+	}
+
+	subject, body, err := ces.templateManager.RenderTemplate(template, templateData)
+	if err != nil {
+		// return ces.sendBookingConfirmationFallback(email, data)
+	}
+	return ces.sender.Send(email, subject, body)
+}
 
 // ... implement other consultation methods
 
 func (ces *ConsultationEmailService) sendBookingConfirmationFallback(email string, data interfaces.ConsultationBookingData) error {
-	subject := "Consultation Booking Confirmed"
+	subject := "✅ Your 123 Consultation Booking is Confirmed"
+
 	body := fmt.Sprintf(`
-		<h2>Booking Confirmation</h2>
-		<p>Your consultation has been booked successfully!</p>
-		<p><strong>Booking ID:</strong> %s</p>
-		<p><strong>Doctor:</strong> %s</p>
-		<p><strong>Date:</strong> %s at %s</p>
-		<p><strong>Type:</strong> %s</p>
+		<div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+			<h2 style="color: #2c3e50;">📅 Booking Confirmation</h2>
+			<p style="font-size: 16px;">Hello,</p>
+			<p style="font-size: 16px;">Your consultation has been <strong>successfully booked</strong>! Below are the details:</p>
+
+			<table style="width: 100%%; font-size: 16px; margin-top: 20px;">
+				<tr>
+					<td style="padding: 8px;"><strong>🔖 Booking ID:</strong></td>
+					<td style="padding: 8px;">%s</td>
+				</tr>
+				<tr>
+					<td style="padding: 8px;"><strong>👨‍⚕️ Doctor:</strong></td>
+					<td style="padding: 8px;">%s</td>
+				</tr>
+				<tr>
+					<td style="padding: 8px;"><strong>📆 Date:</strong></td>
+					<td style="padding: 8px;">%s</td>
+				</tr>
+				<tr>
+					<td style="padding: 8px;"><strong>⏰ Time:</strong></td>
+					<td style="padding: 8px;">%s</td>
+				</tr>
+				<tr>
+					<td style="padding: 8px;"><strong>💬 Type:</strong></td>
+					<td style="padding: 8px;">%s</td>
+				</tr>
+			</table>
+
+			<p style="margin-top: 30px; font-size: 15px; color: #555;">
+				If you have any questions, feel free to contact us.  
+				<br><br>
+				Thank you for choosing our service! 🧑‍⚕️💙
+			</p>
+		</div>
 	`, data.BookingID, data.DoctorName, data.ConsultationDate, data.ConsultationTime, data.ConsultationType)
 
 	return ces.sender.Send(email, subject, body)

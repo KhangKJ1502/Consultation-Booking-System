@@ -5,6 +5,7 @@ import (
 	"cbs_backend/utils/cache"
 	"context"
 
+	"github.com/bsm/redislock"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -13,8 +14,8 @@ var (
 	iBookingService IBookings
 )
 
-func InitBookingService(db *gorm.DB, cache cache.BookingCache, logger *zap.Logger) {
-	iBookingService = NewBookingService(db, cache, logger)
+func InitBookingService(db *gorm.DB, cache cache.BookingCache, logger *zap.Logger, redisLocker *redislock.Client) {
+	iBookingService = NewBookingService(db, cache, logger, redisLocker)
 }
 
 func Booking() IBookings {

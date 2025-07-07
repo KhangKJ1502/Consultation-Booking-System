@@ -12,7 +12,10 @@ type EmailService interface {
 
 	// // Consultation-related emails
 	SendConsultationBookingConfirmation(ctx context.Context, userID string, data ConsultationBookingData) error
-	// SendConsultationReminder(ctx context.Context, userID string, data ConsultationReminderData) error
+	SendConsultationBookingApprove(ctx context.Context, userID string, data ConsultationBookingData) error
+	SendConsultationBookingCancelledForUser(ctx context.Context, userID string, data ConsultationCancellationDataForUser) error
+	SendConsultationBookingCancelledForExpert(ctx context.Context, expertID string, data ConsultationCancellationDataForExpert) error
+	// SendConsultationReminder(ctx context.Context, userID		 string, data ConsultationReminderData) error
 	// SendConsultationCancellation(ctx context.Context, userID string, data ConsultationCancellationData) error
 	// SendConsultationRescheduled(ctx context.Context, userID string, data ConsultationRescheduleData) error
 

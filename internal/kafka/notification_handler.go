@@ -26,8 +26,12 @@ func (h *EventHandler) handleNotificationEvent(data []byte) error {
 		return h.handleWelcomeEmail(event)
 	case "profile_updated":
 		return h.handleProfileUpdatedNotification(event)
+	case "booking approve":
+		return h.handleBookingApproveNotification(event)
 	case "booking_confirmation":
 		return h.handleBookingConfirmationNotification(event)
+	case "booking_cancelled":
+		return h.handleBookingCancelledNotification(event) // ✅ FIXED
 	default:
 		log.Printf("⚠️ Unknown notification type: %s", event.Type)
 	}
@@ -66,7 +70,6 @@ func (h *EventHandler) handleProfileUpdatedNotification(event NotificationEvent)
 	log.Printf("✅ Profile updated notification processed for user: %s", event.UserID)
 	return nil
 }
-
 func (h *EventHandler) handleBookingConfirmationNotification(event NotificationEvent) error {
 	log.Printf("📬 Sending booking confirmation email to user: %s", event.UserID)
 
@@ -90,6 +93,29 @@ func (h *EventHandler) handleBookingConfirmationNotification(event NotificationE
 	return h.emailService.SendConsultationBookingConfirmation(context.Background(), event.UserID, *bookingData)
 }
 
+func (h *EventHandler) handleBookingApproveNotification(event NotificationEvent) error {
+	log.Printf("📬 Sending booking confirmation email to user: %s", event.UserID)
+
+	// Extract booking data from event
+	bookingData := h.extractBookingDataFromEvent(event)
+	if bookingData == nil {
+		log.Printf("❌ Failed to extract booking data from event")
+		return fmt.Errorf("failed to extract booking data")
+	}
+
+	// Check if email service is available
+	if h.emailService == nil {
+		log.Printf("⚠️ EmailService is nil - running in simulation mode")
+		log.Printf("✅ [SIMULATION] Booking confirmation email sent to user %s for booking %s",
+			event.UserID, bookingData.BookingID)
+		return nil
+	}
+
+	// Send real email
+	log.Printf("✅ EmailService available - sending real booking confirmation email")
+	return h.emailService.SendConsultationBookingApprove(context.Background(), event.UserID, *bookingData)
+}
+
 func (h *EventHandler) handleBookingReminder(event NotificationEvent) error {
 	log.Printf("⏰ Processing booking reminder for user: %s", event.UserID)
 	// TODO: Implement booking reminder logic
@@ -97,14 +123,64 @@ func (h *EventHandler) handleBookingReminder(event NotificationEvent) error {
 }
 
 func (h *EventHandler) handleBookingCancelledNotification(event NotificationEvent) error {
-	log.Printf("❌ Processing booking cancelled notification for user: %s", event.UserID)
-	// TODO: Implement booking cancelled notification logic
+	log.Printf("📧 Sending booking cancelled email to %s: %s", event.RecipientType, event.RecipientID)
+
+	switch event.RecipientType {
+	case "user":
+		data := interfaces.ConsultationCancellationDataForUser{
+			BookingID:         getString(event.Data["booking_id"]),
+			DoctorName:        getString(event.Data["doctor_name"]),
+			ConsultationDate:  getString(event.Data["consultation_date"]),
+			ConsultationTime:  getString(event.Data["consultation_time"]),
+			CancellationBy:    getString(event.Data["cancellation_by"]),
+			CancellationNote:  getString(event.Data["cancellation_note"]),
+			RefundAmount:      getFloat64(event.Data["refund_amount"]),
+			RefundProcessDays: int(getFloat64(event.Data["refund_process_days"])),
+		}
+
+		if err := h.emailService.SendConsultationBookingCancelledForUser(context.Background(), event.RecipientID, data); err != nil {
+			log.Printf("❌ Failed to send cancel email to user %s: %v", event.RecipientID, err)
+		}
+
+	case "expert":
+		data := interfaces.ConsultationCancellationDataForExpert{
+			BookingID:         getString(event.Data["booking_id"]),
+			UserName:          getString(event.Data["user_name"]), // cần thêm vào khi publish
+			ConsultationDate:  getString(event.Data["consultation_date"]),
+			ConsultationTime:  getString(event.Data["consultation_time"]),
+			CancellationBy:    getString(event.Data["cancellation_by"]),
+			CancellationNote:  getString(event.Data["cancellation_note"]),
+			RefundAmount:      getFloat64(event.Data["refund_amount"]),
+			RefundProcessDays: int(getFloat64(event.Data["refund_process_days"])),
+		}
+
+		if err := h.emailService.SendConsultationBookingCancelledForExpert(context.Background(), event.RecipientID, data); err != nil {
+			log.Printf("❌ Failed to send cancel email to expert %s: %v", event.RecipientID, err)
+		}
+
+	default:
+		log.Printf("⚠️ Unknown recipient type: %s", event.RecipientType)
+	}
+
 	return nil
 }
 
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
+func getString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func getFloat64(v interface{}) float64 {
+	if f, ok := v.(float64); ok {
+		return f
+	}
+	return 0
+}
 
 func (h *EventHandler) extractBookingDataFromEvent(event NotificationEvent) *interfaces.ConsultationBookingData {
 	data := event.Data

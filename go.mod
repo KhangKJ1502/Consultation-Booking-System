@@ -6,6 +6,7 @@ require github.com/redis/go-redis/v9 v9.11.0
 
 require (
 	github.com/IBM/sarama v1.41.1 // indirect
+	github.com/bsm/redislock v0.9.4 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect

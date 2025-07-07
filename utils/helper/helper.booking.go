@@ -22,24 +22,39 @@ func NewHelperBooking(db *gorm.DB) *HelperBooking {
 		db: db,
 	}
 }
-
-// CheckExpertAvailabilityDB kiểm tra availability của expert trong database
-func (hb *HelperBooking) CheckExpertAvailabilityDB(ctx context.Context, expertID string, startTime, endTime time.Time) (bool, error) {
+func (hb *HelperBooking) CheckExpertAvailabilityDB(ctx context.Context, expertID string, startTime, endTime time.Time) (int64, error) {
 	var count int64
 	err := hb.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).
-		Where("expert_profile_id = ? AND booking_status NOT IN (?) AND ((booking_datetime <= ? AND booking_datetime + INTERVAL duration_minutes MINUTE > ?) OR (booking_datetime < ? AND booking_datetime + INTERVAL duration_minutes MINUTE >= ?))",
-			expertID, []string{"cancelled", "completed"}, startTime, startTime, endTime, endTime).
+		Where(`
+			expert_profile_id = ?
+			AND booking_status NOT IN (?)
+			AND (
+				(booking_datetime <= ? AND booking_datetime + (duration_minutes || ' minutes')::interval > ?)
+				OR
+				(booking_datetime < ? AND booking_datetime + (duration_minutes || ' minutes')::interval >= ?)
+			)
+		`,
+			expertID,
+			[]string{"cancelled", "completed"},
+			startTime, startTime, endTime, endTime).
 		Count(&count).Error
 
-	return count == 0, err
+	return count, err
 }
 
 // CheckUserConflictDB kiểm tra conflict booking của user trong database
 func (hb *HelperBooking) CheckUserConflictDB(ctx context.Context, userID string, startTime, endTime time.Time) (bool, error) {
 	var count int64
 	err := hb.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).
-		Where("user_id = ? AND booking_status NOT IN (?) AND ((booking_datetime <= ? AND booking_datetime + INTERVAL duration_minutes MINUTE > ?) OR (booking_datetime < ? AND booking_datetime + INTERVAL duration_minutes MINUTE >= ?))",
-			userID, []string{"cancelled", "completed"}, startTime, startTime, endTime, endTime).
+		Where(`
+			user_id = ? 
+			AND booking_status NOT IN (?) 
+			AND (
+				(booking_datetime <= ? AND booking_datetime + (duration_minutes || ' minutes')::interval > ?) 
+				OR 
+				(booking_datetime < ? AND booking_datetime + (duration_minutes || ' minutes')::interval >= ?)
+			)
+		`, userID, []string{"cancelled", "completed"}, startTime, startTime, endTime, endTime).
 		Count(&count).Error
 
 	return count > 0, err
@@ -87,9 +102,14 @@ func (hb *HelperBooking) UpdateBookingStatus(ctx context.Context, bookingID stri
 }
 
 // IsTimeSlotAvailable kiểm tra time slot có available không
+// IsTimeSlotAvailable: kiểm tra khung giờ có bị trùng lịch không
 func (hb *HelperBooking) IsTimeSlotAvailable(ctx context.Context, expertID string, startTime time.Time, durationMinutes int) (bool, error) {
 	endTime := startTime.Add(time.Duration(durationMinutes) * time.Minute)
-	return hb.CheckExpertAvailabilityDB(ctx, expertID, startTime, endTime)
+	count, err := hb.CheckExpertAvailabilityDB(ctx, expertID, startTime, endTime)
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
 }
 
 func (hb *HelperBooking) GenerateAvailableSlots(
@@ -166,6 +186,7 @@ func (hb *HelperBooking) GenerateAvailableSlots(
 
 	return slots
 }
+
 func (hb *HelperBooking) updateExpertRating(tx *gorm.DB, expertProfileID uuid.UUID) error {
 	var avgRating float64
 	var totalReviews int64
@@ -217,12 +238,58 @@ func (hb *HelperBooking) logStatusChange(ctx context.Context, bookingID uuid.UUI
 	return hb.db.WithContext(ctx).Table("tbl_booking_status_history").Create(&statusHistory).Error
 }
 
-// func (hb *helperBooking) publishBookingEvent(ctx context.Context, event BookingEvent) error {
-// 	eventData, err := json.Marshal(event)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to marshal booking event: %w", err)
-// 	}
+// Thêm vào helper booking
 
-// 	topic := "booking-events"
-// 	return kafka.PublishMessage(ctx, topic, event.BookingID, eventData)
-// }
+// CheckDuplicateBooking kiểm tra xem user đã có booking với expert trong cùng thời gian chưa
+func (h *HelperBooking) CheckDuplicateBooking(ctx context.Context, userID, expertID string, startTime, endTime time.Time) (bool, error) {
+	var count int64
+	err := h.db.WithContext(ctx).
+		Model(&entityBooking.ConsultationBooking{}).
+		Where("user_id = ? AND expert_profile_id = ? AND booking_datetime >= ? AND booking_datetime < ? AND booking_status IN (?)",
+			userID, expertID, startTime, endTime, []string{"pending", "confirmed"}).
+		Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// CheckOverlappingBooking kiểm tra xem có booking nào overlap với thời gian này không
+func (h *HelperBooking) CheckOverlappingBooking(ctx context.Context, userID, expertID string, startTime, endTime time.Time) (bool, error) {
+	var count int64
+	err := h.db.WithContext(ctx).
+		Model(&entityBooking.ConsultationBooking{}).
+		Where("user_id = ? AND expert_profile_id = ? AND booking_status IN (?) AND ((booking_datetime <= ? AND DATE_ADD(booking_datetime, INTERVAL duration_minutes MINUTE) > ?) OR (booking_datetime < ? AND DATE_ADD(booking_datetime, INTERVAL duration_minutes MINUTE) >= ?))",
+			userID, expertID, []string{"pending", "confirmed"}, startTime, startTime, endTime, endTime).
+		Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// CheckExpertBookingConflict kiểm tra xem expert có booking conflict không
+func (h *HelperBooking) CheckExpertBookingConflict(ctx context.Context, expertID string, startTime, endTime time.Time, excludeBookingID ...string) (bool, error) {
+	query := h.db.WithContext(ctx).
+		Model(&entityBooking.ConsultationBooking{}).
+		Where("expert_profile_id = ? AND booking_status IN (?) AND ((booking_datetime <= ? AND DATE_ADD(booking_datetime, INTERVAL duration_minutes MINUTE) > ?) OR (booking_datetime < ? AND DATE_ADD(booking_datetime, INTERVAL duration_minutes MINUTE) >= ?))",
+			expertID, []string{"pending", "confirmed"}, startTime, startTime, endTime, endTime)
+
+	// Exclude specific booking if provided (useful for update operations)
+	if len(excludeBookingID) > 0 && excludeBookingID[0] != "" {
+		query = query.Where("booking_id != ?", excludeBookingID[0])
+	}
+
+	var count int64
+	err := query.Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
