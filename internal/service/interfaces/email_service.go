@@ -15,8 +15,9 @@ type EmailService interface {
 	SendConsultationBookingApprove(ctx context.Context, userID string, data ConsultationBookingData) error
 	SendConsultationBookingCancelledForUser(ctx context.Context, userID string, data ConsultationCancellationDataForUser) error
 	SendConsultationBookingCancelledForExpert(ctx context.Context, expertID string, data ConsultationCancellationDataForExpert) error
+	SendConsultationBookingRemindersToUser(ctx context.Context, userID string, data ConsultationReminderData) error
+	SendConsultationBookingRemindersToExpert(ctx context.Context, userID string, data ConsultationReminderData) error
 	// SendConsultationReminder(ctx context.Context, userID		 string, data ConsultationReminderData) error
-	// SendConsultationCancellation(ctx context.Context, userID string, data ConsultationCancellationData) error
 	// SendConsultationRescheduled(ctx context.Context, userID string, data ConsultationRescheduleData) error
 
 	// // Doctor-related emails

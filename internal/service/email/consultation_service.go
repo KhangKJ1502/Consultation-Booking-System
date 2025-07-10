@@ -168,6 +168,50 @@ func (ces *ConsultationEmailService) SendBookingCancelledForExpert(ctx context.C
 	return ces.sender.Send(email, subject, body)
 }
 
+func (ces *ConsultationEmailService) SendReminderToUser(ctx context.Context, userID string, data interfaces.ConsultationReminderData) error {
+	email := ces.userResolver.GetUserEmail(userID)
+	template, err := ces.templateManager.GetTemplate("booking_reminder")
+	if err != nil {
+		// fallback gửi email text đơn giản
+	}
+	templateData := map[string]interface{}{
+		"UserName":         data.UserName,
+		"BookingID":        data.BookingID,
+		"ConsultationDate": data.ConsultationDate,
+		"ConsultationTime": data.ConsultationTime,
+		"MeetingLink":      data.MeetingLink,
+		"Location":         data.Location,
+		"TimeUntil":        data.TimeUntil,
+	}
+	subject, body, err := ces.templateManager.RenderTemplate(template, templateData)
+	if err != nil {
+		// fallback
+	}
+	return ces.sender.Send(email, subject, body)
+}
+
+func (ces *ConsultationEmailService) sendReminderToExpert(ctx context.Context, userID string, data interfaces.ConsultationReminderData) error {
+	email := ces.userResolver.GetUserEmail(userID)
+	template, err := ces.templateManager.GetTemplate("booking_reminder_expert")
+	if err != nil {
+		// fallback gửi email text đơn giản
+	}
+	templateData := map[string]interface{}{
+		"UserName":         data.UserName,
+		"BookingID":        data.BookingID,
+		"ConsultationDate": data.ConsultationDate,
+		"ConsultationTime": data.ConsultationTime,
+		"MeetingLink":      data.MeetingLink,
+		"Location":         data.Location,
+		"TimeUntil":        data.TimeUntil,
+	}
+	subject, body, err := ces.templateManager.RenderTemplate(template, templateData)
+	if err != nil {
+		// fallback
+	}
+	return ces.sender.Send(email, subject, body)
+}
+
 // ... implement other consultation methods
 
 func (ces *ConsultationEmailService) sendBookingConfirmationFallback(email string, data interfaces.ConsultationBookingData) error {

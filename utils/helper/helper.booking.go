@@ -22,6 +22,7 @@ func NewHelperBooking(db *gorm.DB) *HelperBooking {
 		db: db,
 	}
 }
+
 func (hb *HelperBooking) CheckExpertAvailabilityDB(ctx context.Context, expertID string, startTime, endTime time.Time) (int64, error) {
 	var count int64
 	err := hb.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).

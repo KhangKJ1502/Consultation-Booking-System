@@ -17,15 +17,22 @@ type ConsultationBookingData struct {
 	CancellationPolicy string
 }
 
+// internal/service/interfaces/email_service.go
+
 type ConsultationReminderData struct {
-	BookingID        string
-	DoctorName       string
-	ConsultationDate string
-	ConsultationTime string
-	MeetingLink      string
-	Location         string
-	ConsultationType string
-	TimeUntil        string // "24 hours", "1 hour", etc.
+	BookingID        string // ID của lịch hẹn
+	UserID           string // ID người dùng (nếu cần)
+	UserName         string // Tên người dùng (bệnh nhân)
+	UserEmail        string // Email người dùng
+	ExpertID         string // ID chuyên gia (nếu cần)
+	ExpertName       string // Tên chuyên gia
+	ExpertEmail      string // Email chuyên gia
+	ConsultationDate string // Ngày diễn ra lịch hẹn (yyyy-MM-dd)
+	ConsultationTime string // Giờ diễn ra lịch hẹn (HH:mm)
+	MeetingLink      string // Link họp online (nếu có)
+	Location         string // Địa chỉ (nếu offline)
+	ConsultationType string // "online" hoặc "offline"
+	TimeUntil        string // Thời gian còn lại (ví dụ: "1 giờ", "24 giờ")
 }
 
 type ConsultationCancellationDataForUser struct {

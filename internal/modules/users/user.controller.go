@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -178,4 +179,344 @@ func (uc *UserController) Logout(ctx *gin.Context) (res interface{}, err error) 
 	}
 
 	return responseData, nil
+}
+
+// RefreshToken - Refresh JWT token
+func (uc *UserController) RefreshToken(ctx *gin.Context) (res interface{}, err error) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	newToken, err := User().RefeshToken(ctx.Request.Context(), req.RefreshToken)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Invalid refresh token", err.Error())
+	}
+
+	return map[string]interface{}{
+		"access_token": newToken,
+	}, nil
+}
+
+// ChangePassword - Change user password
+func (uc *UserController) ChangePassword(ctx *gin.Context) (res interface{}, err error) {
+	var req dtousergo.ChangePasswordRequest
+
+	// Lấy userID từ context
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Unauthorized", "UserID not found in context")
+	}
+
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Internal error", "Invalid userID type")
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	err = User().ChangePassword(ctx.Request.Context(), req, userID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to change password", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "Password changed successfully",
+	}, nil
+}
+
+// ResetPassword - Request password reset
+func (uc *UserController) ResetPassword(ctx *gin.Context) (res interface{}, err error) {
+	var req dtousergo.ResetPasswordRequest
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	err = User().ResetPassword(ctx.Request.Context(), req)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to reset password", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "Password reset email sent successfully",
+	}, nil
+}
+
+// ConfirmResetPassword - Confirm password reset with token
+func (uc *UserController) ConfirmResetPassword(ctx *gin.Context) (res interface{}, err error) {
+	var req dtousergo.ConfirmResetPasswordRequest
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	err = User().ConfirmResetPassword(ctx.Request.Context(), req)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to confirm password reset", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "Password reset successfully",
+	}, nil
+}
+
+// DeleteAccount - Delete user account
+func (uc *UserController) DeleteAccount(ctx *gin.Context) (res interface{}, err error) {
+	var req dtousergo.DeleteAccountRequest
+
+	// Lấy userID từ context
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Unauthorized", "UserID not found in context")
+	}
+
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Internal error", "Invalid userID type")
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	err = User().DeleteAccount(ctx.Request.Context(), req, userID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to delete account", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "Account deleted successfully",
+	}, nil
+}
+
+// GetUsersByRole - Get users by role (Admin function)
+func (uc *UserController) GetUsersByRole(ctx *gin.Context) (res interface{}, err error) {
+	role := ctx.Query("role")
+	if role == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Role parameter is required", "")
+	}
+
+	page := 1
+	limit := 10
+
+	if pageStr := ctx.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if limitStr := ctx.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	users, err := User().GetUsersByRole(ctx.Request.Context(), role, page, limit)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Failed to get users", err.Error())
+	}
+
+	return users, nil
+}
+
+// DeactivateUser - Deactivate user account (Admin function)
+func (uc *UserController) DeactivateUser(ctx *gin.Context) (res interface{}, err error) {
+	targetUserIDStr := ctx.Param("userID")
+	if targetUserIDStr == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "User ID is required", "")
+	}
+
+	targetUserID, err := uuid.Parse(targetUserIDStr)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid user ID format", err.Error())
+	}
+
+	err = User().DeactivateUser(ctx.Request.Context(), targetUserID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to deactivate user", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "User deactivated successfully",
+	}, nil
+}
+
+// ActivateUser - Activate user account (Admin function)
+func (uc *UserController) ActivateUser(ctx *gin.Context) (res interface{}, err error) {
+	targetUserIDStr := ctx.Param("userID")
+	if targetUserIDStr == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "User ID is required", "")
+	}
+
+	targetUserID, err := uuid.Parse(targetUserIDStr)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid user ID format", err.Error())
+	}
+
+	err = User().ActivateUser(ctx.Request.Context(), targetUserID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to activate user", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "User activated successfully",
+	}, nil
+}
+
+// LogoutAllSessions - Logout all user sessions
+func (uc *UserController) LogoutAllSessions(ctx *gin.Context) (res interface{}, err error) {
+	// Lấy userID từ context
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Unauthorized", "UserID not found in context")
+	}
+
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Internal error", "Invalid userID type")
+	}
+
+	err = User().LogoutAllSessions(ctx.Request.Context(), userID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Failed to logout all sessions", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "All sessions logged out successfully",
+	}, nil
+}
+
+// UpdateUserRole - Update user role (Admin function)
+func (uc *UserController) UpdateUserRole(ctx *gin.Context) (res interface{}, err error) {
+	targetUserIDStr := ctx.Param("userID")
+	if targetUserIDStr == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "User ID is required", "")
+	}
+
+	targetUserID, err := uuid.Parse(targetUserIDStr)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid user ID format", err.Error())
+	}
+
+	var req struct {
+		Role string `json:"role" binding:"required"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	err = User().UpdateUserRole(ctx.Request.Context(), targetUserID, req.Role)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to update user role", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "User role updated successfully",
+	}, nil
+}
+
+// SearchUsers - Search users with filters
+func (uc *UserController) SearchUsers(ctx *gin.Context) (res interface{}, err error) {
+	var req dtousergo.SearchUsersRequest
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	users, err := User().SearchUsers(ctx.Request.Context(), req)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Failed to search users", err.Error())
+	}
+
+	return users, nil
+}
+
+// UpdateEmail - Update user email
+func (uc *UserController) UpdateEmail(ctx *gin.Context) (res interface{}, err error) {
+	var req dtousergo.UpdateEmailRequest
+
+	// Lấy userID từ context
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Unauthorized", "UserID not found in context")
+	}
+
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Internal error", "Invalid userID type")
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid request payload", err.Error())
+	}
+
+	err = User().UpdateEmail(ctx.Request.Context(), req, userID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to update email", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "Email updated successfully",
+	}, nil
+}
+
+// GetActiveTokens - Get user's active tokens
+func (uc *UserController) GetActiveTokens(ctx *gin.Context) (res interface{}, err error) {
+	// Lấy userID từ context
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Unauthorized", "UserID not found in context")
+	}
+
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Internal error", "Invalid userID type")
+	}
+
+	tokens, err := User().GetActiveTokens(ctx.Request.Context(), userID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Failed to get active tokens", err.Error())
+	}
+
+	return tokens, nil
+}
+
+// RevokeToken - Revoke specific token
+func (uc *UserController) RevokeToken(ctx *gin.Context) (res interface{}, err error) {
+	tokenIDStr := ctx.Param("tokenID")
+	if tokenIDStr == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Token ID is required", "")
+	}
+
+	tokenID, err := uuid.Parse(tokenIDStr)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid token ID format", err.Error())
+	}
+
+	// Lấy userID từ context
+	userIDValue, exists := ctx.Get("userID")
+	if !exists {
+		return nil, response.NewAPIError(http.StatusUnauthorized, "Unauthorized", "UserID not found in context")
+	}
+
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Internal error", "Invalid userID type")
+	}
+
+	err = User().RevokeToken(ctx.Request.Context(), tokenID, userID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to revoke token", err.Error())
+	}
+
+	return map[string]interface{}{
+		"message": "Token revoked successfully",
+	}, nil
 }

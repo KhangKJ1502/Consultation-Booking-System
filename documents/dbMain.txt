@@ -6,7 +6,6 @@ Ai là người giữ khóa ngoại người đó ghi constain
 
 *Khi tạo dữ liệu jsonb trong DB {{ ._ }} nếu ko có cấu trúc z nó tưởng là hàm
 
-
 -- Consultation Booking System Database Schema
 -- PostgreSQL Database Design với tên bảng rõ ràng
 
@@ -26,9 +25,32 @@ CREATE TABLE tbl_users (
     bio_description TEXT,
     is_active BOOLEAN DEFAULT true,
     email_verified BOOLEAN DEFAULT false,
-    notification_settings JSONB DEFAULT '{"email": true, "push": true, "telegram": false}',
     user_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     user_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tbl_user_notification_settings (
+    setting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL, -- booking_reminder, booking_cancelled, ...
+    delivery_method VARCHAR(20) NOT NULL,   -- app, email, telegram, sms
+    is_enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tbl_notification_history (
+    notification_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL,
+    delivery_method VARCHAR(20) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    delivery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    sent_at TIMESTAMP WITH TIME ZONE,
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Bảng thông tin chuyên gia - Chi tiết hồ sơ chuyên gia tư vấn
@@ -154,6 +176,27 @@ CREATE TABLE tbl_notification_templates (
     template_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     template_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+-- Create the notification history table
+CREATE TABLE tbl_notification_history (
+    notification_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    notification_type VARCHAR(50) NOT NULL,
+    delivery_method VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    delivery_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    sent_at TIMESTAMP,
+    delivered_at TIMESTAMP,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add foreign key constraint to users table
+ALTER TABLE tbl_notification_history 
+ADD CONSTRAINT fk_notification_history_user 
+FOREIGN KEY (user_id) 
+REFERENCES tbl_users(user_id) 
+ON DELETE CASCADE;
 
 -- Bảng công việc nền - Quản lý background jobs
 CREATE TABLE tbl_background_jobs (
@@ -197,15 +240,20 @@ CREATE TABLE tbl_activity_logs (
     log_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Bảng refresh token - Quản lý JWT token làm mới
-CREATE TABLE tbl_user_refresh_tokens (
-    refresh_token_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+-- Bảng quản lý tất cả loại token (refresh + password reset)
+CREATE TABLE tbl_user_tokens (
+    token_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
     token_hash VARCHAR(255) NOT NULL,
+    token_type VARCHAR(20) NOT NULL CHECK (token_type IN ('refresh', 'password_reset')),
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     is_revoked BOOLEAN DEFAULT false,
-    token_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    is_used BOOLEAN DEFAULT false,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 
 -- Bảng liên kết nhiều-nhiều: Chuyên gia - Chuyên môn
 CREATE TABLE tbl_expert_specializations (
@@ -512,3 +560,195 @@ INSERT INTO tbl_user_sessions (user_id, session_token, device_info, ip_address, 
 ('f1234567-89ab-cdef-0123-456789abcdef', 'session_token_user2', 'Android Samsung', '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)', '2024-12-20 23:59:59+07'),
 ('b1234567-89ab-cdef-0123-456789abcdef', 'session_token_expert1', 'MacBook Pro', '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '2024-12-20 23:59:59+07');
 
+-- 1. Cài đặt thông báo người dùng
+INSERT INTO tbl_user_notification_settings (user_id, notification_type, delivery_method, is_enabled) VALUES
+-- Cài đặt cho người dùng thường
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'email', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'email', false),
+('e1234567-89ab-cdef-0123-456789abcdef', 'payment_reminder', 'app', true),
+
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'email', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'system_maintenance', 'app', true),
+
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'sms', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', true),
+
+-- Cài đặt cho chuyên gia
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'review_received', 'app', true),
+
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', true),
+
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'review_received', 'app', false);
+
+-- 2. Lịch sử thông báo đã gửi
+INSERT INTO tbl_notification_history (user_id, notification_type, delivery_method, title, content, delivery_status, sent_at, delivered_at) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', 'Lịch hẹn đã được xác nhận', 'Lịch hẹn tư vấn tâm lý của bạn vào ngày 20/12/2024 lúc 10:00 đã được chuyên gia xác nhận.', 'delivered', '2024-12-19 15:30:00+07', '2024-12-19 15:30:15+07'),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'email', 'Lịch hẹn đã được xác nhận', 'Lịch hẹn tư vấn tâm lý của bạn vào ngày 20/12/2024 lúc 10:00 đã được chuyên gia xác nhận.', 'delivered', '2024-12-19 15:30:00+07', '2024-12-19 15:31:22+07'),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', 'Nhắc nhở lịch hẹn', 'Bạn có lịch hẹn với chuyên gia Tiến sĩ Nguyễn Văn A sau 60 phút nữa', 'delivered', '2024-12-20 09:00:00+07', '2024-12-20 09:00:05+07'),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'email', 'Nhắc nhở lịch hẹn', 'Bạn có lịch hẹn với chuyên gia Tiến sĩ Nguyễn Văn A sau 60 phút nữa', 'delivered', '2024-12-20 09:00:00+07', '2024-12-20 09:00:45+07'),
+
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_pending', 'app', 'Lịch hẹn đang chờ xác nhận', 'Lịch hẹn tư vấn dinh dưỡng của bạn vào ngày 22/12/2024 lúc 14:00 đang chờ chuyên gia xác nhận.', 'delivered', '2024-12-21 10:15:00+07', '2024-12-21 10:15:10+07'),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_pending', 'email', 'Lịch hẹn đang chờ xác nhận', 'Lịch hẹn tư vấn dinh dưỡng của bạn vào ngày 22/12/2024 lúc 14:00 đang chờ chuyên gia xác nhận.', 'delivered', '2024-12-21 10:15:00+07', '2024-12-21 10:15:55+07'),
+
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', 'Lịch hẹn đã được xác nhận', 'Lịch hẹn khám tổng quát của bạn vào ngày 23/12/2024 lúc 09:00 đã được bác sĩ xác nhận.', 'delivered', '2024-12-22 08:30:00+07', '2024-12-22 08:30:08+07'),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'sms', 'Lịch hẹn đã được xác nhận', 'Lịch hẹn khám tổng quát của bạn vào ngày 23/12/2024 lúc 09:00 đã được bác sĩ xác nhận.', 'delivered', '2024-12-22 08:30:00+07', '2024-12-22 08:30:25+07'),
+
+-- Thông báo cho chuyên gia
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', 'Yêu cầu đặt lịch mới', 'Bạn có yêu cầu đặt lịch tư vấn từ người dùng Phạm Văn D vào ngày 20/12/2024 lúc 10:00', 'delivered', '2024-12-19 14:45:00+07', '2024-12-19 14:45:05+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', 'Yêu cầu đặt lịch mới', 'Bạn có yêu cầu đặt lịch tư vấn từ người dùng Phạm Văn D vào ngày 20/12/2024 lúc 10:00', 'delivered', '2024-12-19 14:45:00+07', '2024-12-19 14:45:30+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', 'Thanh toán đã nhận', 'Bạn đã nhận thanh toán 500,000 VND từ buổi tư vấn với Phạm Văn D', 'delivered', '2024-12-19 16:00:00+07', '2024-12-19 16:00:05+07'),
+
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', 'Yêu cầu đặt lịch mới', 'Bạn có yêu cầu đặt lịch tư vấn từ người dùng Hoàng Thị E vào ngày 22/12/2024 lúc 14:00', 'delivered', '2024-12-21 10:15:00+07', '2024-12-21 10:15:05+07'),
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', 'Yêu cầu đặt lịch mới', 'Bạn có yêu cầu đặt lịch tư vấn từ người dùng Hoàng Thị E vào ngày 22/12/2024 lúc 14:00', 'delivered', '2024-12-21 10:15:00+07', '2024-12-21 10:15:45+07'),
+
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', 'Yêu cầu đặt lịch mới', 'Bạn có yêu cầu đặt lịch khám từ người dùng Đặng Văn F vào ngày 23/12/2024 lúc 09:00', 'delivered', '2024-12-22 08:20:00+07', '2024-12-22 08:20:05+07'),
+('d1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', 'Thanh toán đã nhận', 'Bạn đã nhận thanh toán 600,000 VND từ buổi khám với Đặng Văn F', 'delivered', '2024-12-22 08:45:00+07', '2024-12-22 08:45:05+07'),
+
+-- Thông báo lỗi
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'sms', 'Nhắc nhở lịch hẹn', 'Bạn có lịch hẹn với chuyên gia sau 60 phút nữa', 'failed', '2024-12-20 09:00:00+07', NULL),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_pending', 'telegram', 'Lịch hẹn đang chờ xác nhận', 'Lịch hẹn của bạn đang chờ xác nhận', 'failed', '2024-12-21 10:15:00+07', NULL);
+
+-- 3. Công việc nền (Background Jobs)
+INSERT INTO tbl_background_jobs (job_type, job_payload, job_status, attempt_count, max_attempts, scheduled_at, started_at, completed_at) VALUES
+('send_booking_reminder', 
+ '{"booking_id": "fb123456-89ab-cdef-0123-456789abcdef", "user_id": "e1234567-89ab-cdef-0123-456789abcdef", "reminder_time": "2024-12-20T09:00:00+07:00"}'::jsonb, 
+ 'completed', 1, 3, '2024-12-20 09:00:00+07', '2024-12-20 09:00:02+07', '2024-12-20 09:00:15+07'),
+
+('send_booking_confirmation', 
+ '{"booking_id": "fb123456-89ab-cdef-0123-456789abcdef", "user_id": "e1234567-89ab-cdef-0123-456789abcdef", "expert_id": "b1234567-89ab-cdef-0123-456789abcdef"}'::jsonb, 
+ 'completed', 1, 3, '2024-12-19 15:30:00+07', '2024-12-19 15:30:05+07', '2024-12-19 15:30:30+07'),
+
+('send_payment_notification', 
+ '{"booking_id": "fb123456-89ab-cdef-0123-456789abcdef", "expert_id": "b1234567-89ab-cdef-0123-456789abcdef", "amount": 500000}'::jsonb, 
+ 'completed', 1, 3, '2024-12-19 16:00:00+07', '2024-12-19 16:00:05+07', '2024-12-19 16:00:12+07'),
+
+('cleanup_expired_sessions', 
+ '{"cleanup_before": "2024-12-18T00:00:00+07:00"}'::jsonb, 
+ 'completed', 1, 3, '2024-12-19 02:00:00+07', '2024-12-19 02:00:05+07', '2024-12-19 02:01:30+07'),
+
+('send_booking_reminder', 
+ '{"booking_id": "fc123456-89ab-cdef-0123-456789abcdef", "user_id": "f1234567-89ab-cdef-0123-456789abcdef", "reminder_time": "2024-12-22T13:00:00+07:00"}'::jsonb, 
+ 'pending', 0, 3, '2024-12-22 13:00:00+07', NULL, NULL),
+
+('send_booking_reminder', 
+ '{"booking_id": "fd123456-89ab-cdef-0123-456789abcdef", "user_id": "a2234567-89ab-cdef-0123-456789abcdef", "reminder_time": "2024-12-23T08:00:00+07:00"}'::jsonb, 
+ 'pending', 0, 3, '2024-12-23 08:00:00+07', NULL, NULL),
+
+('update_expert_ratings', 
+ '{"expert_id": "eb123456-89ab-cdef-0123-456789abcdef"}'::jsonb, 
+ 'completed', 1, 3, '2024-12-19 23:30:00+07', '2024-12-19 23:30:05+07', '2024-12-19 23:30:45+07'),
+
+('send_email_notification', 
+ '{"user_id": "e1234567-89ab-cdef-0123-456789abcdef", "email": "truongvankhang1502@gmail.com", "template": "booking_confirmed"}'::jsonb, 
+ 'failed', 3, 3, '2024-12-19 15:30:00+07', '2024-12-19 15:35:00+07', NULL),
+
+('generate_monthly_report', 
+ '{"month": "2024-12", "expert_id": "all"}'::jsonb, 
+ 'processing', 1, 3, '2024-12-20 01:00:00+07', '2024-12-20 01:00:05+07', NULL),
+
+('backup_database', 
+ '{"backup_type": "daily", "tables": ["tbl_consultation_bookings", "tbl_payment_transactions"]}'::jsonb, 
+ 'completed', 1, 3, '2024-12-20 03:00:00+07', '2024-12-20 03:00:10+07', '2024-12-20 03:15:30+07');
+
+-- 4. Nhật ký hoạt động (Activity Logs)
+INSERT INTO tbl_activity_logs (user_id, action_performed, affected_table, affected_record_id, old_values, new_values, user_ip_address, user_agent) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'CREATE_BOOKING', 'tbl_consultation_bookings', 'fb123456-89ab-cdef-0123-456789abcdef', 
+ NULL, 
+ '{"booking_datetime": "2024-12-20T10:00:00+07:00", "expert_profile_id": "eb123456-89ab-cdef-0123-456789abcdef", "consultation_type": "online"}'::jsonb, 
+ '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)'),
+
+('b1234567-89ab-cdef-0123-456789abcdef', 'UPDATE_BOOKING_STATUS', 'tbl_consultation_bookings', 'fb123456-89ab-cdef-0123-456789abcdef', 
+ '{"booking_status": "pending"}'::jsonb, 
+ '{"booking_status": "confirmed"}'::jsonb, 
+ '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'),
+
+('e1234567-89ab-cdef-0123-456789abcdef', 'UPDATE_PROFILE', 'tbl_users', 'e1234567-89ab-cdef-0123-456789abcdef', 
+ '{"phone_number": null}'::jsonb, 
+ '{"phone_number": "0901234571"}'::jsonb, 
+ '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)'),
+
+('f1234567-89ab-cdef-0123-456789abcdef', 'CREATE_BOOKING', 'tbl_consultation_bookings', 'fc123456-89ab-cdef-0123-456789abcdef', 
+ NULL, 
+ '{"booking_datetime": "2024-12-22T14:00:00+07:00", "expert_profile_id": "ec123456-89ab-cdef-0123-456789abcdef", "consultation_type": "online"}'::jsonb, 
+ '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)'),
+
+('a2234567-89ab-cdef-0123-456789abcdef', 'CREATE_BOOKING', 'tbl_consultation_bookings', 'fd123456-89ab-cdef-0123-456789abcdef', 
+ NULL, 
+ '{"booking_datetime": "2024-12-23T09:00:00+07:00", "expert_profile_id": "ed123456-89ab-cdef-0123-456789abcdef", "consultation_type": "offline"}'::jsonb, 
+ '192.168.1.4', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'),
+
+('d1234567-89ab-cdef-0123-456789abcdef', 'UPDATE_BOOKING_STATUS', 'tbl_consultation_bookings', 'fd123456-89ab-cdef-0123-456789abcdef', 
+ '{"booking_status": "pending"}'::jsonb, 
+ '{"booking_status": "confirmed"}'::jsonb, 
+ '192.168.1.5', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'),
+
+('e1234567-89ab-cdef-0123-456789abcdef', 'CREATE_REVIEW', 'tbl_consultation_reviews', 'fe123456-89ab-cdef-0123-456789abcdef', 
+ NULL, 
+ '{"rating_score": 5, "review_comment": "Chuyên gia rất tận tâm và chuyên nghiệp"}'::jsonb, 
+ '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)'),
+
+('b1234567-89ab-cdef-0123-456789abcdef', 'UPDATE_WORKING_HOURS', 'tbl_expert_working_hours', 'eb123456-89ab-cdef-0123-456789abcdef', 
+ '{"end_time": "17:00:00"}'::jsonb, 
+ '{"end_time": "18:00:00"}'::jsonb, 
+ '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'),
+
+('a1234567-89ab-cdef-0123-456789abcdef', 'UPDATE_SYSTEM_SETTINGS', 'tbl_system_settings', NULL, 
+ '{"setting_value": "60"}'::jsonb, 
+ '{"setting_value": "90"}'::jsonb, 
+ '192.168.1.10', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'),
+
+('c1234567-89ab-cdef-0123-456789abcdef', 'CREATE_UNAVAILABLE_TIME', 'tbl_expert_unavailable_times', 'ec123456-89ab-cdef-0123-456789abcdef', 
+ NULL, 
+ '{"unavailable_start_datetime": "2024-12-30T00:00:00+07:00", "unavailable_end_datetime": "2025-01-02T23:59:59+07:00"}'::jsonb, 
+ '192.168.1.6', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'),
+
+-- System actions (không có user_id)
+(NULL, 'SYSTEM_CLEANUP', 'tbl_user_sessions', NULL, 
+ NULL, 
+ '{"cleaned_sessions": 5, "cleanup_date": "2024-12-19"}'::jsonb, 
+ NULL, 'System Process'),
+
+(NULL, 'SYSTEM_BACKUP', 'tbl_consultation_bookings', NULL, 
+ NULL, 
+ '{"backup_type": "daily", "records_backed_up": 150}'::jsonb, 
+ NULL, 'System Process'),
+
+(NULL, 'SYSTEM_NOTIFICATION_CLEANUP', 'tbl_notification_history', NULL, 
+ NULL, 
+ '{"cleaned_notifications": 25, "older_than_days": 30}'::jsonb, 
+ NULL, 'System Process');
+
+-- 5. Cập nhật một số cài đặt hệ thống bổ sung
+INSERT INTO tbl_system_settings (setting_key, setting_value, setting_description, is_public) VALUES
+('notification_retry_attempts', '3', 'Số lần thử lại khi gửi thông báo thất bại', false),
+('session_timeout_minutes', '120', 'Thời gian timeout của phiên đăng nhập (phút)', false),
+('max_concurrent_sessions', '3', 'Số phiên đăng nhập tối đa cho một user', false),
+('backup_retention_days', '90', 'Số ngày lưu trữ backup', false),
+('activity_log_retention_days', '365', 'Số ngày lưu trữ nhật ký hoạt động', false),
+('notification_batch_size', '100', 'Số lượng thông báo xử lý trong một batch', false),
+('email_rate_limit_per_hour', '50', 'Giới hạn số email gửi mỗi giờ', false),
+('sms_rate_limit_per_hour', '20', 'Giới hạn số SMS gửi mỗi giờ', false),
+('app_version', '"1.0.0"', 'Phiên bản ứng dụng hiện tại', true),
+('maintenance_message', '"Hệ thống đang được bảo trì, vui lòng thử lại sau"', 'Thông báo khi bảo trì', true);

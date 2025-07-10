@@ -10,6 +10,10 @@ type EmailConfig struct {
 	FromEmail    string
 	FromName     string
 	BaseURL      string
+	ReplyTo      string // Thêm ReplyTo field
+	Timeout      int    // Timeout in seconds
+	MaxRetries   int    // Max retry attempts
+	TLSEnabled   bool   // Enable TLS
 }
 
 func LoadEmailConfig() EmailConfig {
@@ -22,5 +26,9 @@ func LoadEmailConfig() EmailConfig {
 		FromEmail:    config.FromEmail,
 		FromName:     config.FromName,
 		BaseURL:      config.BaseURL,
+		ReplyTo:      config.ReplyTo, // Nếu có trong global config
+		Timeout:      30,
+		MaxRetries:   3,
+		TLSEnabled:   true,
 	}
 }

@@ -97,7 +97,7 @@ func MigrateDatabase(db *gorm.DB) error {
 
 	userDependentTables := []interface{}{
 		&entityExpert.ExpertProfile{},
-		&entityUser.UserRefreshToken{},
+		&entityUser.UserToken{},
 		&entityUser.UserSession{},
 		&entityNotification.SystemNotification{},
 		&entityLog.ActivityLog{},

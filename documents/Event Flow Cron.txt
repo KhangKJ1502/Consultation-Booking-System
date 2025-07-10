@@ -1,0 +1,163 @@
+scheduler.go --> reminder_service.go
+
+
+
+Để tổ chức lại hệ thống rõ ràng hơn theo hướng phân rõ trách nhiệm như bạn mong muốn, tôi đề xuất cấu trúc và sửa code như sau:
+1. Phân rõ trách nhiệm các lớp
+Class	Chức năng chính	Nhiệm vụ cụ thể
+ReminderService	Nghiệp vụ liên quan đến booking, nhắc lịch, xử lý trùng, thống kê	- Lấy danh sách booking cần nhắc
+- Xử lý trạng thái booking
+- Gọi sang NotificationService/EnhancedNotificationService để gửi notification/email
+NotificationService	Gửi notification/email hàng loạt (batch)	- Nhận danh sách người nhận, nội dung
+- Gửi notification/email từng người
+- Ghi log, thống kê kết quả
+EnhancedNotificationService	Thực thi gửi notification/email thực tế, retry, lưu lịch sử, đa kênh	- Nhận payload gửi
+- Gửi qua các dịch vụ (SMTP, SMS, Telegram)
+- Quản lý retry, lưu lịch sử, gửi đa kênh
+
+
+
+Luồng hoạt động Reminder từ khởi tạo đến khi gửi mail
+Dưới đây là mô tả chi tiết luồng hoạt động của chức năng gửi reminder (nhắc lịch) từ lúc khởi tạo đến khi email được gửi, kèm ví dụ code minh họa.
+
+1. Khởi tạo Reminder Job
+WorkerScheduler sử dụng cron để lên lịch các job reminder.
+
+Ví dụ: Cứ mỗi 10 phút, một job "booking_reminder" được thêm vào queue.
+
+go
+// scheduleCronJobs trong WorkerScheduler
+ws.cron.AddFunc("*/10 * * * *", func() {
+    ws.AddJob(Job{
+        ID:        generateJobID(),
+        Type:      "booking_reminder",
+        Payload:   nil,
+        Priority:  1,
+        MaxRetries: 3,
+        CreatedAt: time.Now(),
+    })
+})
+
+2. Xử lý Job Reminder
+Worker lấy job "booking_reminder" từ queue và gọi hàm xử lý reminder.
+
+go
+// processJob trong WorkerScheduler
+case "booking_reminder":
+    err = ws.reminderSvc.SendBookingReminders()
+    
+3. Lấy danh sách các booking sắp diễn ra
+ReminderService truy vấn các booking sắp diễn ra trong 1 giờ tới, chưa gửi reminder.
+go
+query := `
+    SELECT ... FROM tbl_consultation_bookings cb
+    ...
+    WHERE cb.booking_status = 'confirmed'
+    AND cb.reminder_sent = false
+    AND cb.booking_datetime BETWEEN NOW() AND NOW() + INTERVAL '1 hour'
+`
+rs.db.Raw(query).Scan(&bookings)
+4. Tạo Notification và Gửi Email Reminder
+Với từng booking, ReminderService sẽ:
+
+Gửi notification cho user (và expert).
+
+Notification có trường DeliveryMethods chứa "email".
+
+go
+notification := entityNotify.SystemNotification{
+    RecipientUserID:   booking.UserID,
+    NotificationType:  "booking_reminder",
+    NotificationTitle: "Nhắc nhở: Lịch tư vấn sắp diễn ra",
+    NotificationMessage: fmt.Sprintf("Bạn có lịch tư vấn với %s vào lúc %s",
+        booking.ExpertFullName,
+        booking.BookingDatetime.Format("15:04 02/01/2006")),
+    NotificationData: ...,
+    DeliveryMethods: []string{"app", "email"},
+}
+rs.db.Create(&notification)
+5. Đẩy Job Gửi Email vào Queue
+RealtimeService phát hiện notification có "email" trong DeliveryMethods, tạo job "send_email" và đưa vào queue.
+
+go
+emailJob := Job{
+    ID:      generateJobID(),
+    Type:    "send_email",
+    Priority: 2,
+    MaxRetries: 3,
+    CreatedAt: time.Now(),
+    Payload: map[string]interface{}{
+        "recipient": user.UserEmail,
+        "subject":   notification.NotificationTitle,
+        "body":      notification.NotificationMessage,
+        "template":  "notification",
+        "data": map[string]interface{}{
+            "user_name": user.FullName,
+            "notification": notification,
+        },
+    },
+}
+rs.addJobToQueue(emailJob)
+6. Xử lý Job Gửi Email
+Worker lấy job "send_email" từ queue, gọi hàm gửi email trong NotificationService hoặc EnhancedNotificationService.
+
+go
+// processSendEmail trong EnhancedNotificationService
+payload, err := ens.parseEmailPayload(job.Payload)
+err = ens.sendEmailWithRetry(payload, &history)
+Hàm gửi email có retry, sử dụng dịch vụ gửi email thực tế hoặc mô phỏng.
+
+go
+for i := 0; i < maxRetries; i++ {
+    err := ens.emailSvc.SendConsultationBookingReminders(context.Background(), payload.UserID, reminderData)
+    if err == nil {
+        return nil
+    }
+    // retry nếu lỗi
+}
+7. Email được gửi đến người dùng
+Nếu gửi thành công, cập nhật trạng thái thành công cho notification history.
+
+Nếu thất bại, lưu lỗi và có thể retry.
+
+Tóm tắt luồng hoạt động
+Lên lịch job reminder (cron).
+
+Worker lấy job reminder, gọi ReminderService.
+
+Truy vấn các booking sắp diễn ra.
+
+Tạo notification có phương thức gửi qua email.
+
+Tạo job gửi email, đưa vào queue.
+
+Worker xử lý job gửi email, thực hiện gửi mail.
+
+Gửi thành công hoặc retry nếu lỗi.
+
+Ví dụ code tổng hợp
+go
+// 1. Lên lịch job reminder
+ws.cron.AddFunc("*/10 * * * *", func() {
+    ws.AddJob(Job{Type: "booking_reminder", ...})
+})
+
+// 2. Worker xử lý job reminder
+case "booking_reminder":
+    ws.reminderSvc.SendBookingReminders()
+
+// 3. ReminderService truy vấn booking
+rs.db.Raw(query).Scan(&bookings)
+
+// 4. Tạo notification có email
+notification := entityNotify.SystemNotification{..., DeliveryMethods: []string{"app", "email"}}
+rs.db.Create(&notification)
+
+// 5. RealtimeService tạo job gửi email
+emailJob := Job{Type: "send_email", Payload: {...}}
+rs.addJobToQueue(emailJob)
+
+// 6. Worker xử lý job gửi email
+payload, _ := ens.parseEmailPayload(job.Payload)
+ens.sendEmailWithRetry(payload, &history)
+Luồng này đảm bảo việc gửi reminder tự động, đúng lịch, có retry và log lại lịch sử gửi mail.

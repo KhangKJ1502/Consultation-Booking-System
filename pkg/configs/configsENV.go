@@ -25,6 +25,7 @@ type STMPConfig struct {
 	SmtpPassword string
 	FromName     string
 	FromEmail    string
+	ReplyTo      string
 	BaseURL      string
 }
 type ServerConfig struct {
@@ -108,6 +109,7 @@ func LoadConfigs() (*ConectionConfigs, error) { // Try to load .env file from mu
 			SmtpUsername: getEnv("SMTP_USERNAME", "truongvankhangthanthanh@gmail.com"),
 			SmtpPassword: getEnv("SMTP_PASSWORD", "hothingoctram12032004"),
 			FromName:     getEnv("FROM_NAME", "Consultation Booking System"),
+			ReplyTo:      getEnv("REPLY_TO", "support@company.com"),
 			FromEmail:    getEnv("FROM_Email", "truongvankhangthanthanh@gmail.com"),
 			BaseURL:      getEnv("BASE_URL", "http://localhost:8899"),
 		},

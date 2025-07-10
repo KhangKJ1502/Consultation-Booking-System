@@ -1,171 +1,804 @@
--- SQL Script for Consultation Booking System Database Schema
+INSERT INTO tbl_consultation_bookings (
+    booking_id, 
+    user_id, 
+    expert_profile_id, 
+    booking_datetime, 
+    duration_minutes, 
+    consultation_type, 
+    booking_status, 
+    reminder_sent,
+    meeting_link,
+    payment_status
+)
+VALUES
+-- Sẽ diễn ra trong 30 phút tới
+('e1234567-87ab-cdff-0123-451789abcdef', 
+ 'e1234567-89ab-cdef-0123-456789abcdef', 
+ 'ec123456-89ab-cdef-0123-456789abcdef', 
+ NOW() + INTERVAL '30 minutes', 
+ 60, 
+ 'online', 
+ 'confirmed', 
+ false,
+ 'https://meet.test.com/room1',
+ 'paid') 
+Mai De Test Nhac lich
 
--- Table: users
-CREATE TABLE users (
-    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username VARCHAR(50) UNIQUE NOT NULL,
+-- Consultation Booking System Database Schema
+-- PostgreSQL Database Design với tên bảng rõ ràng
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Bảng người dùng - Quản lý tất cả tài khoản
+CREATE TABLE tbl_users (
+    user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    full_name VARCHAR(100),
+    full_name VARCHAR(255) NOT NULL,
     phone_number VARCHAR(20),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    user_type ENUM("client", "expert", "admin") NOT NULL
+    avatar_url TEXT,
+    gender VARCHAR(10) CHECK (gender IN ('male', 'female', 'other')),
+    user_role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (user_role IN ('user', 'expert', 'admin')),
+    bio_description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    email_verified BOOLEAN DEFAULT false,
+    user_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    user_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: experts
-CREATE TABLE experts (
-    expert_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID UNIQUE NOT NULL,
-    specialization VARCHAR(255) NOT NULL,
-    bio TEXT,
-    experience_years INT,
-    hourly_rate DECIMAL(10, 2),
-    availability JSON,
-    average_rating DECIMAL(2, 1) DEFAULT 0.0,
-    total_ratings INT DEFAULT 0,
-    status ENUM("active", "inactive", "pending") NOT NULL
+-- Bảng cài đặt thông báo người dùng
+CREATE TABLE tbl_user_notification_settings (
+    setting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL, -- booking_reminder, booking_cancelled, ...
+    delivery_method VARCHAR(20) NOT NULL,   -- app, email, telegram, sms
+    is_enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: bookings
-CREATE TABLE bookings (
-    booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID NOT NULL,
-    expert_id UUID NOT NULL,
-    start_time DATETIME NOT NULL,
-    end_time DATETIME NOT NULL,
-    duration_minutes INT,
-    status ENUM("pending", "confirmed", "cancelled", "completed") NOT NULL,
-    total_price DECIMAL(10, 2),
-    payment_status ENUM("pending", "paid", "refunded") NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+-- Bảng lịch sử thông báo
+CREATE TABLE tbl_notification_history (
+    notification_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL,
+    delivery_method VARCHAR(20) NOT NULL, 
+    notification_status VARCHAR(50) DEFAULT 'pending',
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    delivery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    sent_at TIMESTAMP WITH TIME ZONE,
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: notifications
-CREATE TABLE notifications (
-    notification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,
-    type VARCHAR(50) NOT NULL,
-    message TEXT NOT NULL,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Bảng thông tin chuyên gia - Chi tiết hồ sơ chuyên gia tư vấn
+CREATE TABLE tbl_expert_profiles (
+    expert_profile_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    specialization_list TEXT[] NOT NULL, -- Danh sách chuyên môn
+    experience_years INTEGER,
+    expert_bio TEXT,
+    consultation_fee DECIMAL(10,2),
+    average_rating DECIMAL(3,2) DEFAULT 0.00,
+    total_reviews INTEGER DEFAULT 0,
+    is_verified BOOLEAN DEFAULT false,
+    license_number VARCHAR(100),
+    available_online BOOLEAN DEFAULT true,
+    available_offline BOOLEAN DEFAULT true,
+    expert_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expert_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: feedback
-CREATE TABLE feedback (
-    feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    booking_id UUID UNIQUE NOT NULL,
-    client_id UUID NOT NULL,
-    expert_id UUID NOT NULL,
-    comments TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Bảng lịch làm việc của chuyên gia - Khung giờ có thể nhận tư vấn
+CREATE TABLE tbl_expert_working_hours (
+    working_hour_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Chủ Nhật, 6=Thứ 7
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    working_hour_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(expert_profile_id, day_of_week, start_time, end_time)
 );
 
--- Table: ratings
-CREATE TABLE ratings (
-    rating_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    booking_id UUID UNIQUE NOT NULL,
-    client_id UUID NOT NULL,
-    expert_id UUID NOT NULL,
-    score INT NOT NULL CHECK (score >= 1 AND score <= 5),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Bảng thời gian nghỉ của chuyên gia - Khi nào không nhận lịch
+CREATE TABLE tbl_expert_unavailable_times (
+    unavailable_time_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    unavailable_start_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+    unavailable_end_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+    unavailable_reason TEXT,
+    is_recurring BOOLEAN DEFAULT false,
+    recurrence_pattern JSONB, -- Mẫu lặp lại (hàng tuần, hàng tháng...)
+    unavailable_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: services
-CREATE TABLE services (
-    service_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    service_name VARCHAR(100) UNIQUE NOT NULL,
-    description TEXT
+-- Bảng đặt lịch tư vấn - Lịch hẹn giữa người dùng và chuyên gia
+CREATE TABLE tbl_consultation_bookings (
+    booking_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    booking_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+    duration_minutes INTEGER DEFAULT 60,
+    consultation_type VARCHAR(20) NOT NULL CHECK (consultation_type IN ('online', 'offline')),
+    booking_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (
+        booking_status IN ('pending', 'confirmed', 'rejected', 'cancelled', 'completed', 'missed', 'no_show')
+    ),
+    user_notes TEXT,
+    expert_notes TEXT,
+    meeting_link TEXT, -- Link họp online
+    meeting_address TEXT, -- Địa chỉ gặp trực tiếp
+    consultation_fee DECIMAL(10,2),
+    payment_status VARCHAR(20) DEFAULT 'pending' CHECK (
+        payment_status IN ('pending', 'paid', 'refunded', 'failed')
+    ),
+    cancellation_reason TEXT,
+    cancelled_by_user_id UUID REFERENCES tbl_users(user_id),
+    cancelled_at TIMESTAMP WITH TIME ZONE,
+    reminder_sent BOOLEAN DEFAULT false,
+    booking_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    booking_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: expert_services
-CREATE TABLE expert_services (
-    expert_id UUID NOT NULL,
-    service_id UUID NOT NULL,
-    PRIMARY KEY (expert_id, service_id)
+-- Bảng lịch sử thay đổi trạng thái đặt lịch - Theo dõi từng bước thay đổi
+CREATE TABLE tbl_booking_status_history (
+    status_history_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID NOT NULL REFERENCES tbl_consultation_bookings(booking_id) ON DELETE CASCADE,
+    old_status VARCHAR(20),
+    new_status VARCHAR(20) NOT NULL,
+    changed_by_user_id UUID NOT NULL REFERENCES tbl_users(user_id),
+    change_reason TEXT,
+    status_changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table: payment_transactions
-CREATE TABLE payment_transactions (
-    transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    booking_id UUID NOT NULL,
-    amount DECIMAL(10, 2) NOT NULL,
-    transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    payment_method VARCHAR(50),
-    status ENUM("success", "failed", "pending") NOT NULL
+-- Bảng đánh giá và nhận xét - Feedback sau khi tư vấn
+CREATE TABLE tbl_consultation_reviews (
+    review_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID NOT NULL REFERENCES tbl_consultation_bookings(booking_id) ON DELETE CASCADE,
+    reviewer_user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    rating_score INTEGER NOT NULL CHECK (rating_score BETWEEN 1 AND 5),
+    review_comment TEXT,
+    is_anonymous BOOLEAN DEFAULT false,
+    is_visible BOOLEAN DEFAULT true,
+    review_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    review_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(booking_id, reviewer_user_id)
 );
 
+-- Bảng thông báo hệ thống - Gửi thông báo cho người dùng
+CREATE TABLE tbl_system_notifications (
+    notification_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    recipient_user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL,
+    notification_title VARCHAR(255) NOT NULL,
+    notification_message TEXT NOT NULL,
+    notification_data JSONB, -- Dữ liệu bổ sung
+    is_read BOOLEAN DEFAULT false,
+    delivery_methods VARCHAR(20)[] DEFAULT ARRAY['app'], -- app, email, telegram
+    sent_at TIMESTAMP WITH TIME ZONE,
+    read_at TIMESTAMP WITH TIME ZONE,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    notification_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
--- Foreign Keys
+-- Bảng mẫu thông báo - Template cho các loại thông báo
+CREATE TABLE tbl_notification_templates (
+    template_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    template_name VARCHAR(100) UNIQUE NOT NULL,
+    notification_type VARCHAR(50) NOT NULL,
+    title_template TEXT NOT NULL,
+    message_template TEXT NOT NULL,
+    template_variables JSONB, -- Biến có thể sử dụng
+    is_active BOOLEAN DEFAULT true,
+    template_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    template_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE experts
-ADD CONSTRAINT fk_experts_users
-FOREIGN KEY (user_id) REFERENCES users(user_id);
+-- Bảng công việc nền - Quản lý background jobs
+CREATE TABLE tbl_background_jobs (
+    job_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_type VARCHAR(50) NOT NULL,
+    job_payload JSONB NOT NULL,
+    job_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (
+        job_status IN ('pending', 'processing', 'completed', 'failed', 'retrying')
+    ),
+    attempt_count INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    scheduled_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    job_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE bookings
-ADD CONSTRAINT fk_bookings_client
-FOREIGN KEY (client_id) REFERENCES users(user_id);
+-- Bảng cài đặt hệ thống - Cấu hình toàn bộ hệ thống
+CREATE TABLE tbl_system_settings (
+    setting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    setting_key VARCHAR(100) UNIQUE NOT NULL,
+    setting_value JSONB NOT NULL,
+    setting_description TEXT,
+    is_public BOOLEAN DEFAULT false,
+    setting_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    setting_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE bookings
-ADD CONSTRAINT fk_bookings_expert
-FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+-- Bảng nhật ký hoạt động - Ghi lại mọi thao tác quan trọng
+CREATE TABLE tbl_activity_logs (
+    log_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES tbl_users(user_id), -- Có thể NULL cho system actions 
+    action_performed VARCHAR(100) NOT NULL,
+    affected_table VARCHAR(50) NOT NULL,
+    affected_record_id UUID,
+    old_values JSONB,
+    new_values JSONB,
+    user_ip_address INET,
+    user_agent TEXT,
+    log_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE notifications
-ADD CONSTRAINT fk_notifications_users
-FOREIGN KEY (user_id) REFERENCES users(user_id);
+-- Bảng quản lý tất cả loại token (refresh + password reset)
+CREATE TABLE tbl_user_tokens (
+    token_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL,
+    token_type VARCHAR(20) NOT NULL CHECK (token_type IN ('refresh', 'password_reset')),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    is_revoked BOOLEAN DEFAULT false,
+    is_used BOOLEAN DEFAULT false,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE feedback
-ADD CONSTRAINT fk_feedback_booking
-FOREIGN KEY (booking_id) REFERENCES bookings(booking_id);
+-- Bảng liên kết nhiều-nhiều: Chuyên gia - Chuyên môn
+CREATE TABLE tbl_expert_specializations (
+    specialization_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    specialization_name VARCHAR(100) NOT NULL,
+    specialization_description TEXT,
+    is_primary BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE feedback
-ADD CONSTRAINT fk_feedback_client
-FOREIGN KEY (client_id) REFERENCES users(user_id);
+-- Bảng quản lý phiên đăng nhập - Theo dõi sessions
+CREATE TABLE tbl_user_sessions (
+    session_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    session_token VARCHAR(255) NOT NULL,
+    device_info TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    is_active BOOLEAN DEFAULT true,
+    last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    session_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE feedback
-ADD CONSTRAINT fk_feedback_expert
-FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+-- Bảng lịch sử thanh toán - Theo dõi giao dịch
+CREATE TABLE tbl_payment_transactions (
+    transaction_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    booking_id UUID NOT NULL REFERENCES tbl_consultation_bookings(booking_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
+    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    amount DECIMAL(10,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'VND',
+    payment_method VARCHAR(50), -- momo, zalopay, bank_transfer, etc.
+    transaction_status VARCHAR(20) DEFAULT 'pending' CHECK (
+        transaction_status IN ('pending', 'processing', 'completed', 'failed', 'refunded', 'cancelled')
+    ),
+    external_transaction_id VARCHAR(255), -- ID từ bên thứ 3
+    payment_gateway VARCHAR(50),
+    gateway_response JSONB,
+    processed_at TIMESTAMP WITH TIME ZONE,
+    transaction_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE ratings
-ADD CONSTRAINT fk_ratings_booking
-FOREIGN KEY (booking_id) REFERENCES bookings(booking_id);
+-- Bảng cấu hình phí - Quản lý bảng giá linh hoạt
+CREATE TABLE tbl_pricing_configs (
+    pricing_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    expert_profile_id UUID REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+    service_type VARCHAR(50) NOT NULL, -- consultation, coaching, therapy
+    consultation_type VARCHAR(20) NOT NULL CHECK (consultation_type IN ('online', 'offline')),
+    duration_minutes INTEGER NOT NULL,
+    base_price DECIMAL(10,2) NOT NULL,
+    discount_percentage DECIMAL(5,2) DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    valid_from TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    valid_until TIMESTAMP WITH TIME ZONE,
+    pricing_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-ALTER TABLE ratings
-ADD CONSTRAINT fk_ratings_client
-FOREIGN KEY (client_id) REFERENCES users(user_id);
+-- Tạo indexes để tối ưu hiệu suất truy vấn
+CREATE INDEX idx_tbl_users_email ON tbl_users(user_email);
+CREATE INDEX idx_tbl_users_role ON tbl_users(user_role);
+CREATE INDEX idx_tbl_expert_profiles_user ON tbl_expert_profiles(user_id);
+CREATE INDEX idx_tbl_expert_working_hours_expert ON tbl_expert_working_hours(expert_profile_id);
+CREATE INDEX idx_tbl_expert_working_hours_day ON tbl_expert_working_hours(day_of_week);
+CREATE INDEX idx_tbl_expert_unavailable_expert ON tbl_expert_unavailable_times(expert_profile_id);
+CREATE INDEX idx_tbl_expert_unavailable_datetime ON tbl_expert_unavailable_times(unavailable_start_datetime, unavailable_end_datetime);
+CREATE INDEX idx_tbl_consultation_bookings_user ON tbl_consultation_bookings(user_id);
+CREATE INDEX idx_tbl_consultation_bookings_expert ON tbl_consultation_bookings(expert_profile_id);
+CREATE INDEX idx_tbl_consultation_bookings_datetime ON tbl_consultation_bookings(booking_datetime);
+CREATE INDEX idx_tbl_consultation_bookings_status ON tbl_consultation_bookings(booking_status);
+CREATE INDEX idx_tbl_consultation_bookings_created ON tbl_consultation_bookings(booking_created_at);
+CREATE INDEX idx_tbl_booking_status_history_booking ON tbl_booking_status_history(booking_id);
+CREATE INDEX idx_tbl_consultation_reviews_expert ON tbl_consultation_reviews(expert_profile_id);
+CREATE INDEX idx_tbl_consultation_reviews_user ON tbl_consultation_reviews(reviewer_user_id);
+CREATE INDEX idx_tbl_system_notifications_user ON tbl_system_notifications(recipient_user_id);
+CREATE INDEX idx_tbl_system_notifications_read ON tbl_system_notifications(is_read);
+CREATE INDEX idx_tbl_system_notifications_created ON tbl_system_notifications(notification_created_at);
+CREATE INDEX idx_tbl_background_jobs_status ON tbl_background_jobs(job_status);
+CREATE INDEX idx_tbl_background_jobs_scheduled ON tbl_background_jobs(scheduled_at);
+CREATE INDEX idx_tbl_activity_logs_user ON tbl_activity_logs(user_id);
+CREATE INDEX idx_tbl_activity_logs_table_record ON tbl_activity_logs(affected_table, affected_record_id);
+CREATE INDEX idx_tbl_user_tokens_user ON tbl_user_tokens(user_id);
+CREATE INDEX idx_tbl_user_tokens_expires ON tbl_user_tokens(expires_at);
+CREATE INDEX idx_tbl_user_tokens_type ON tbl_user_tokens(token_type);
+CREATE INDEX idx_tbl_expert_specializations_expert ON tbl_expert_specializations(expert_profile_id);
+CREATE INDEX idx_tbl_user_sessions_user ON tbl_user_sessions(user_id);
+CREATE INDEX idx_tbl_user_sessions_active ON tbl_user_sessions(is_active);
+CREATE INDEX idx_tbl_payment_transactions_booking ON tbl_payment_transactions(booking_id);
+CREATE INDEX idx_tbl_payment_transactions_user ON tbl_payment_transactions(user_id);
+CREATE INDEX idx_tbl_payment_transactions_status ON tbl_payment_transactions(transaction_status);
+CREATE INDEX idx_tbl_pricing_configs_expert ON tbl_pricing_configs(expert_profile_id);
+CREATE INDEX idx_tbl_pricing_configs_active ON tbl_pricing_configs(is_active);
 
-ALTER TABLE ratings
-ADD CONSTRAINT fk_ratings_expert
-FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+-- Tạo function để tự động cập nhật updated_at
+CREATE OR REPLACE FUNCTION fn_update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Cập nhật các trường updated_at tương ứng
+    IF TG_TABLE_NAME = 'tbl_users' THEN
+        NEW.user_updated_at = CURRENT_TIMESTAMP;
+    ELSIF TG_TABLE_NAME = 'tbl_expert_profiles' THEN
+        NEW.expert_updated_at = CURRENT_TIMESTAMP;
+    ELSIF TG_TABLE_NAME = 'tbl_consultation_bookings' THEN
+        NEW.booking_updated_at = CURRENT_TIMESTAMP;
+    ELSIF TG_TABLE_NAME = 'tbl_consultation_reviews' THEN
+        NEW.review_updated_at = CURRENT_TIMESTAMP;
+    ELSIF TG_TABLE_NAME = 'tbl_notification_templates' THEN
+        NEW.template_updated_at = CURRENT_TIMESTAMP;
+    ELSIF TG_TABLE_NAME = 'tbl_system_settings' THEN
+        NEW.setting_updated_at = CURRENT_TIMESTAMP;
+    ELSIF TG_TABLE_NAME = 'tbl_user_notification_settings' THEN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
 
-ALTER TABLE expert_services
-ADD CONSTRAINT fk_expert_services_expert
-FOREIGN KEY (expert_id) REFERENCES experts(expert_id);
+-- Áp dụng trigger tự động cập nhật updated_at
+CREATE TRIGGER trg_tbl_users_updated_at 
+    BEFORE UPDATE ON tbl_users
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
 
-ALTER TABLE expert_services
-ADD CONSTRAINT fk_expert_services_service
-FOREIGN KEY (service_id) REFERENCES services(service_id);
+CREATE TRIGGER trg_tbl_expert_profiles_updated_at 
+    BEFORE UPDATE ON tbl_expert_profiles
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
 
-ALTER TABLE payment_transactions
-ADD CONSTRAINT fk_payment_transactions_booking
-FOREIGN KEY (booking_id) REFERENCES bookings(booking_id);
+CREATE TRIGGER trg_tbl_consultation_bookings_updated_at 
+    BEFORE UPDATE ON tbl_consultation_bookings
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
+
+CREATE TRIGGER trg_tbl_consultation_reviews_updated_at 
+    BEFORE UPDATE ON tbl_consultation_reviews
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
+
+CREATE TRIGGER trg_tbl_notification_templates_updated_at 
+    BEFORE UPDATE ON tbl_notification_templates
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
+
+CREATE TRIGGER trg_tbl_system_settings_updated_at 
+    BEFORE UPDATE ON tbl_system_settings
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
+
+CREATE TRIGGER trg_tbl_user_notification_settings_updated_at 
+    BEFORE UPDATE ON tbl_user_notification_settings
+    FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at_column();
+    -- ========================================
+-- SCRIPT CÀI ĐẶT DỮ LIỆU MẪU HỆ THỐNG TƯ VẤN
+-- ========================================
+
+-- 1. CÀI ĐẶT HỆ THỐNG MẶC ĐỊNH
+INSERT INTO tbl_system_settings (setting_key, setting_value, setting_description, is_public) VALUES
+('booking_reminder_minutes', '60', 'Số phút trước khi gửi nhắc lịch hẹn', false),
+('max_booking_advance_days', '30', 'Số ngày tối đa có thể đặt lịch trước', true),
+('min_cancellation_hours', '1', 'Số giờ tối thiểu trước khi có thể hủy lịch', true),
+('default_consultation_duration', '60', 'Thời gian tư vấn mặc định (phút)', true),
+('max_daily_bookings_per_user', '3', 'Số lịch tối đa mỗi người dùng có thể đặt trong ngày', false),
+('cleanup_old_bookings_days', '30', 'Số ngày lưu trữ lịch hẹn cũ', false),
+('min_booking_advance_hours', '2', 'Số giờ tối thiểu phải đặt lịch trước', false),
+('booking_cancellation_deadline_hours', '24', 'Thời hạn hủy lịch trước giờ hẹn (giờ)', false),
+('system_maintenance_mode', 'false', 'Chế độ bảo trì hệ thống', true),
+('notification_retry_attempts', '3', 'Số lần thử lại khi gửi thông báo thất bại', false),
+('session_timeout_minutes', '120', 'Thời gian timeout của phiên đăng nhập (phút)', false),
+('max_concurrent_sessions', '3', 'Số phiên đăng nhập tối đa cho một user', false),
+('backup_retention_days', '90', 'Số ngày lưu trữ backup', false),
+('activity_log_retention_days', '365', 'Số ngày lưu trữ nhật ký hoạt động', false),
+('notification_batch_size', '100', 'Số lượng thông báo xử lý trong một batch', false),
+('email_rate_limit_per_hour', '50', 'Giới hạn số email gửi mỗi giờ', false),
+('sms_rate_limit_per_hour', '20', 'Giới hạn số SMS gửi mỗi giờ', false),
+('app_version', '"1.0.0"', 'Phiên bản ứng dụng hiện tại', true),
+('maintenance_message', '"Hệ thống đang được bảo trì, vui lòng thử lại sau"', 'Thông báo khi bảo trì', true);
+
+-- 2. MẪU THÔNG BÁO MẶC ĐỊNH
+INSERT INTO tbl_notification_templates (template_name, notification_type, title_template, message_template, template_variables, is_active) VALUES
+-- Welcome email
+('welcome_email', 'user', 'Đăng ký tài khoản thành công',
+'Chúc mừng {{ .full_name }}! Bạn đã đăng ký tài khoản thành công trên hệ thống. Hãy kiểm tra email {{ .user_email }} để xác thực tài khoản và bắt đầu sử dụng dịch vụ.',
+'["full_name", "user_email"]'::jsonb, true),
+
+-- Booking created
+('booking_created', 'booking', 'Đặt lịch tư vấn thành công',
+'Bạn đã đặt lịch tư vấn với chuyên gia {{ .expert_name }} vào lúc {{ .booking_datetime }}',
+'["expert_name", "booking_datetime"]'::jsonb, true),
+
+-- Booking confirmed
+('booking_confirmed', 'booking', 'Lịch tư vấn được xác nhận',
+'Chuyên gia {{ .expert_name }} đã xác nhận lịch hẹn của bạn vào {{ .booking_datetime }}',
+'["expert_name", "booking_datetime"]'::jsonb, true),
+
+-- Booking reminder
+('booking_reminder', 'reminder', 'Nhắc nhở lịch tư vấn',
+'Bạn có lịch hẹn với chuyên gia {{ .expert_name }} sau {{ .minutes }} phút nữa',
+'["expert_name", "minutes"]'::jsonb, true),
+
+-- Booking cancelled
+('booking_cancelled', 'booking', 'Lịch tư vấn bị hủy',
+'Lịch hẹn với chuyên gia {{ .expert_name }} vào {{ .booking_datetime }} đã bị hủy bỏ',
+'["expert_name", "booking_datetime"]'::jsonb, true),
+
+-- Booking confirmation
+('booking_confirmation', 'booking_confirmed', 'Lịch hẹn đã được xác nhận',
+'Lịch hẹn {{ .consultation_type }} của bạn vào ngày {{ .booking_date }} lúc {{ .booking_time }} đã được chuyên gia {{ .expert_name }} xác nhận.',
+'["consultation_type", "booking_date", "booking_time", "expert_name"]'::jsonb, true),
+
+-- Booking reminder for expert
+('booking_reminder_expert', 'booking_reminder', 'Nhắc nhở lịch hẹn',
+'Bạn có lịch hẹn tư vấn vào ngày {{ .booking_date }} lúc {{ .booking_time }} với chuyên gia {{ .expert_name }}. Vui lòng chuẩn bị sẵn sàng.',
+'["booking_date", "booking_time", "expert_name"]'::jsonb, true),
+
+-- Booking cancelled for expert
+('booking_cancelled_expert', 'booking_cancelled', 'Lịch tư vấn bị hủy',
+'Lịch hẹn với người dùng {{ .user_name }} vào {{ .booking_datetime }} đã bị hủy.',
+'["user_name", "booking_datetime"]'::jsonb, true);
+
+-- 3. NGƯỜI DÙNG MẪU
+INSERT INTO tbl_users (user_id, user_email, password_hash, full_name, phone_number, gender, user_role, bio_description, is_active, email_verified) VALUES
+('c1234567-89ab-cdef-0123-456789abcdef'::uuid, 'khangtvce181852@fpt.edu.vn', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Thạc sĩ Trần Thị B', '0901234569', 'female', 'expert', 'Chuyên gia dinh dưỡng và sức khỏe', true, true),
+('e1234567-89ab-cdef-0123-456789abcdef'::uuid, 'truongvankhang1502@gmail.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Trương Văn Khang', '0901234571', 'male', 'user', 'Người dùng thường', true, true),
+('a1234567-89ab-cdef-0123-456789abcdef'::uuid, 'admin@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Quản trị viên', '0901234567', 'other', 'admin', 'Quản trị viên hệ thống', true, true),
+('b1234567-89ab-cdef-0123-456789abcdef'::uuid, 'expert1@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Tiến sĩ Nguyễn Văn A', '0901234568', 'male', 'expert', 'Chuyên gia tâm lý học với 10 năm kinh nghiệm', true, true),
+('d1234567-89ab-cdef-0123-456789abcdef'::uuid, 'expert3@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Bác sĩ Lê Văn C', '0901234570', 'male', 'expert', 'Bác sĩ nội khoa 15 năm kinh nghiệm', true, true),
+('f1234567-89ab-cdef-0123-456789abcdef'::uuid, 'user2@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Hoàng Thị E', '0901234572', 'female', 'user', 'Người dùng thường', true, true),
+('a2234567-89ab-cdef-0123-456789abcdef'::uuid, 'user3@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEoaKjTgNzYqOxW', 'Đặng Văn F', '0901234573', 'male', 'user', 'Người dùng thường', true, true);
+
+-- Thêm các user test với UUID tự sinh
+INSERT INTO tbl_users (user_id, user_email, password_hash, full_name, phone_number, gender, user_role, bio_description, is_active, email_verified) VALUES
+(uuid_generate_v4(), 'admin@consultation.vn', '$2a$10$example_hash_admin', 'Quản trị viên hệ thống', null, null, 'admin', null, true, true),
+(uuid_generate_v4(), 'chuyengia1@consultation.vn', '$2a$10$example_hash_expert1', 'TS. Nguyễn Văn An', null, null, 'expert', null, true, true),
+(uuid_generate_v4(), 'chuyengia2@consultation.vn', '$2a$10$example_hash_expert2', 'ThS. Trần Thị Bình', null, null, 'expert', null, true, true),
+(uuid_generate_v4(), 'nguoidung1@consultation.vn', '$2a$10$example_hash_user1', 'Lê Văn Chính', null, null, 'user', null, true, true),
+(uuid_generate_v4(), 'nguoidung2@consultation.vn', '$2a$10$example_hash_user2', 'Phạm Thị Dung', null, null, 'user', null, true, true);
+
+-- 4. HỒ SƠ CHUYÊN GIA
+INSERT INTO tbl_expert_profiles (expert_profile_id, user_id, specialization_list, experience_years, expert_bio, consultation_fee, average_rating, total_reviews, is_verified, license_number, available_online, available_offline) VALUES 
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 'c1234567-89ab-cdef-0123-456789abcdef'::uuid, ARRAY['Dinh dưỡng', 'Tư vấn sức khỏe', 'Giảm cân'], 8, 'Thạc sĩ Dinh dưỡng, chuyên gia về tư vấn chế độ ăn uống và lối sống lành mạnh.', 400000, 4.2, 18, true, 'NUT-002-2024', true, false),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 'b1234567-89ab-cdef-0123-456789abcdef'::uuid, ARRAY['Tâm lý học', 'Tư vấn tâm lý', 'Trị liệu tâm lý'], 10, 'Tiến sĩ Tâm lý học, chuyên về tư vấn tâm lý cá nhân và gia đình. Có 10 năm kinh nghiệm trong lĩnh vực tâm lý học lâm sàng.', 500000, 4.5, 25, true, 'PSY-001-2024', true, true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 'd1234567-89ab-cdef-0123-456789abcdef'::uuid, ARRAY['Nội khoa', 'Tư vấn sức khỏe', 'Khám bệnh tổng quát'], 15, 'Bác sĩ Nội khoa với 15 năm kinh nghiệm, chuyên về khám và điều trị các bệnh lý nội khoa.', 600000, 4.8, 40, true, 'DOC-003-2024', true, true);
+
+-- Hồ sơ chuyên gia test từ user test
+INSERT INTO tbl_expert_profiles (user_id, specialization_list, experience_years, expert_bio, consultation_fee, is_verified)
+SELECT u.user_id, ARRAY['Tâm lý học', 'Tư vấn tâm lý'], 8, 'Tiến sĩ Tâm lý học với 8 năm kinh nghiệm tư vấn', 500000.00, true
+FROM tbl_users u WHERE u.user_email = 'chuyengia1@consultation.vn';
+INSERT INTO tbl_expert_profiles (user_id, specialization_list, experience_years, expert_bio, consultation_fee, is_verified)
+SELECT u.user_id, ARRAY['Tư vấn nghề nghiệp', 'Coaching cuộc sống'], 5, 'Thạc sĩ chuyên về tư vấn nghề nghiệp và định hướng phát triển', 400000.00, true
+FROM tbl_users u WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+-- 5. LỊCH LÀM VIỆC CHUYÊN GIA
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active) VALUES
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 2, '09:00:00', '17:00:00', true),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 4, '09:00:00', '17:00:00', true),
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, 6, '09:00:00', '15:00:00', true),
+
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '14:00:00', '18:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 3, '08:00:00', '12:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 3, '14:00:00', '18:00:00', true),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, 5, '08:00:00', '12:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '07:00:00', '11:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 1, '13:00:00', '17:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 2, '07:00:00', '11:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 4, '07:00:00', '11:00:00', true),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, 4, '13:00:00', '17:00:00', true);
+
+-- 6. THỜI GIAN NGHỈ CHUYÊN GIA
+INSERT INTO tbl_expert_unavailable_times (expert_profile_id, unavailable_start_datetime, unavailable_end_datetime, unavailable_reason) VALUES
+('ec123456-89ab-cdef-0123-456789abcdef'::uuid, '2024-12-30 00:00:00+07', '2025-01-02 23:59:59+07', 'Nghỉ Tết Dương Lịch'),
+('eb123456-89ab-cdef-0123-456789abcdef'::uuid, '2024-12-25 00:00:00+07', '2024-12-25 23:59:59+07', 'Nghỉ Lễ Giáng Sinh'),
+('ed123456-89ab-cdef-0123-456789abcdef'::uuid, '2024-12-31 00:00:00+07', '2025-01-01 23:59:59+07', 'Nghỉ Tết Dương Lịch');
+
+-- 7. CHUYÊN MÔN CHUYÊN GIA
+INSERT INTO tbl_expert_specializations (expert_profile_id, specialization_name, specialization_description, is_primary) VALUES
+('ec123456-89ab-cdef-0123-456789abcdef', 'Dinh dưỡng lâm sàng', 'Tư vấn dinh dưỡng cho bệnh nhân', true),
+('ec123456-89ab-cdef-0123-456789abcdef', 'Tư vấn giảm cân', 'Hướng dẫn chế độ ăn kiêng khoa học', false),
+('eb123456-89ab-cdef-0123-456789abcdef', 'Tâm lý học lâm sàng', 'Chuyên về điều trị các rối loạn tâm lý', true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'Tư vấn gia đình', 'Tư vấn các vấn đề trong gia đình', false),
+('eb123456-89ab-cdef-0123-456789abcdef', 'Tư vấn tâm lý trẻ em', 'Chuyên về tâm lý học trẻ em và thanh thiếu niên', false),
+('ed123456-89ab-cdef-0123-456789abcdef', 'Nội khoa tổng quát', 'Khám và điều trị các bệnh nội khoa', true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'Tư vấn sức khỏe', 'Tư vấn về lối sống và phòng bệnh', false);
+
+-- 8. CẤU HÌNH GIÁ
+INSERT INTO tbl_pricing_configs (expert_profile_id, service_type, consultation_type, duration_minutes, base_price, discount_percentage, is_active) VALUES
+('ec123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 45, 400000, 0, true),
+('ec123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 60, 500000, 0, true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 60, 500000, 0, true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'consultation', 'offline', 60, 600000, 0, true),
+('eb123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 90, 700000, 10, true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'consultation', 'online', 30, 400000, 0, true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'consultation', 'offline', 30, 500000, 0, true),
+('ed123456-89ab-cdef-0123-456789abcdef', 'consultation', 'offline', 60, 800000, 0, true);
+
+-- 9. ĐẶT LỊCH TƯ VẤN
+INSERT INTO tbl_consultation_bookings (booking_id, user_id, expert_profile_id, booking_datetime, duration_minutes, consultation_type, booking_status, user_notes, consultation_fee, payment_status) VALUES
+('fc123456-89ab-cdef-0123-456789abcdef', 'f1234567-89ab-cdef-0123-456789abcdef', 'ec123456-89ab-cdef-0123-456789abcdef', '2024-12-22 14:00:00+07', 45, 'online', 'pending', 'Tôi muốn tư vấn về chế độ ăn kiêng', 400000, 'pending'),
+('fb123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', '2024-12-20 10:00:00+07', 60, 'online', 'confirmed', 'Tôi muốn tư vấn về vấn đề căng thẳng công việc', 500000, 'paid'),
+('fd123456-89ab-cdef-0123-456789abcdef', 'a2234567-89ab-cdef-0123-456789abcdef', 'ed123456-89ab-cdef-0123-456789abcdef', '2024-12-23 09:00:00+07', 30, 'offline', 'confirmed', 'Khám tổng quát sức khỏe', 600000, 'paid'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', '2024-12-18 15:00:00+07', 60, 'online', 'completed', 'Tư vấn về mối quan hệ gia đình', 500000, 'paid');
+
+-- 10. LỊCH SỬ THAY ĐỔI TRẠNG THÁI
+INSERT INTO tbl_booking_status_history (booking_id, old_status, new_status, changed_by_user_id, change_reason) VALUES
+('fb123456-89ab-cdef-0123-456789abcdef', 'pending', 'confirmed', 'b1234567-89ab-cdef-0123-456789abcdef', 'Chuyên gia xác nhận lịch hẹn'),
+('fd123456-89ab-cdef-0123-456789abcdef', 'pending', 'confirmed', 'd1234567-89ab-cdef-0123-456789abcdef', 'Chuyên gia xác nhận lịch hẹn'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'pending', 'confirmed', 'b1234567-89ab-cdef-0123-456789abcdef', 'Chuyên gia xác nhận lịch hẹn'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'confirmed', 'completed', 'b1234567-89ab-cdef-0123-456789abcdef', 'Hoàn thành buổi tư vấn');
+
+-- 11. ĐÁNH GIÁ TƯ VẤN
+INSERT INTO tbl_consultation_reviews (booking_id, reviewer_user_id, expert_profile_id, rating_score, review_comment, is_anonymous, is_visible) VALUES
+('fe123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 5, 'Chuyên gia rất tận tâm và chuyên nghiệp. Tôi cảm thấy rất hài lòng với buổi tư vấn.', false, true);
+
+-- 12. GIAO DỊCH THANH TOÁN
+INSERT INTO tbl_payment_transactions (booking_id, user_id, expert_profile_id, amount, currency, payment_method, transaction_status, external_transaction_id, payment_gateway) VALUES
+('fb123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 500000, 'VND', 'momo', 'completed', 'MOMO_TXN_001', 'momo'),
+('fd123456-89ab-cdef-0123-456789abcdef', 'a2234567-89ab-cdef-0123-456789abcdef', 'ed123456-89ab-cdef-0123-456789abcdef', 600000, 'VND', 'zalopay', 'completed', 'ZALO_TXN_001', 'zalopay'),
+('fe123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 500000, 'VND', 'bank_transfer', 'completed', 'BANK_TXN_001', 'vietcombank');
+
+-- 13. USER TOKENS (REFRESH TOKEN)
+INSERT INTO tbl_user_tokens (user_id, token_hash, token_type, expires_at) VALUES 
+('e1234567-89ab-cdef-0123-456789abcdef', 'hashed_refresh_token_user1', 'refresh', '2024-12-31 23:59:59+07'),
+('f1234567-89ab-cdef-0123-456789abcdef', 'hashed_refresh_token_user2', 'refresh', '2024-12-31 23:59:59+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'hashed_refresh_token_expert1', 'refresh', '2024-12-31 23:59:59+07');
+
+-- 14. PHIÊN ĐĂNG NHẬP
+INSERT INTO tbl_user_sessions (user_id, session_token, device_info, ip_address, user_agent, expires_at) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'session_token_user1', 'iPhone 13', '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', '2024-12-20 23:59:59+07'),
+('f1234567-89ab-cdef-0123-456789abcdef', 'session_token_user2', 'Android Samsung', '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)', '2024-12-20 23:59:59+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'session_token_expert1', 'MacBook Pro', '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '2024-12-20 23:59:59+07');
+
+-- 15. CÀI ĐẶT THÔNG BÁO NGƯỜI DÙNG
+INSERT INTO tbl_user_notification_settings (user_id, notification_type, delivery_method, is_enabled) VALUES
+-- Cài đặt cho người dùng thường
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'email', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', true),
+-- 15. CÀI ĐẶT THÔNG BÁO NGƯỜI DÙNG (tiếp theo)
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'email', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'sms', false),
+('e1234567-89ab-cdef-0123-456789abcdef', 'payment_completed', 'app', true),
+('e1234567-89ab-cdef-0123-456789abcdef', 'payment_completed', 'email', true),
+
+-- Cài đặt cho người dùng thứ 2
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'email', false),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'email', true),
+('f1234567-89ab-cdef-0123-456789abcdef', 'payment_completed', 'app', true),
+
+-- Cài đặt cho người dùng thứ 3
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'app', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'email', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'sms', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'app', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'email', true),
+('a2234567-89ab-cdef-0123-456789abcdef', 'payment_completed', 'app', true),
+
+-- Cài đặt cho chuyên gia
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'email', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', true),
+('b1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'email', false),
+
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('c1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', true),
+
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'app', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'email', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'app', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'booking_cancelled', 'email', true),
+('d1234567-89ab-cdef-0123-456789abcdef', 'payment_received', 'app', true);
+
+-- 16. LỊCH SỬ THÔNG BÁO
+INSERT INTO tbl_notification_history (
+    user_id, notification_type, title, content, delivery_method, delivery_status, sent_at
+) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'Lịch tư vấn được xác nhận','Chuyên gia Tiến sĩ Nguyễn Văn A đã xác nhận lịch hẹn của bạn vào 2024-12-20 10:00:00',
+ 'app', 'delivered', '2024-12-19 14:30:00+07'),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'Lịch tư vấn được xác nhận','Chuyên gia Tiến sĩ Nguyễn Văn A đã xác nhận lịch hẹn của bạn vào 2024-12-20 10:00:00',
+ 'email', 'delivered', '2024-12-19 14:30:00+07'),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_reminder', 'Nhắc nhở lịch tư vấn','Bạn có lịch hẹn với chuyên gia Tiến sĩ Nguyễn Văn A sau 60 phút nữa',
+ 'app', 'delivered', '2024-12-20 09:00:00+07'),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_request', 'Yêu cầu tư vấn mới','Bạn có yêu cầu tư vấn mới từ Phạm Văn D vào 2024-12-20 10:00:00',
+ 'app', 'delivered', '2024-12-19 14:00:00+07'),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_created', 'Đặt lịch tư vấn thành công','Bạn đã đặt lịch tư vấn với chuyên gia Thạc sĩ Trần Thị B vào lúc 2024-12-22 14:00:00',
+ 'app', 'delivered', '2024-12-21 10:00:00+07');
 
 
+-- 17. NHẬT KÝ HOẠT ĐỘNG HỆ THỐNG
+INSERT INTO tbl_activity_logs (user_id, activity_type, activity_description, ip_address, user_agent, additional_data) VALUES
+('e1234567-89ab-cdef-0123-456789abcdef', 'login', 'Người dùng đăng nhập thành công', '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', '{"device": "iPhone 13", "os": "iOS 15.0"}'::jsonb),
+('e1234567-89ab-cdef-0123-456789abcdef', 'booking_created', 'Tạo lịch hẹn tư vấn mới', '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', '{"booking_id": "fb123456-89ab-cdef-0123-456789abcdef", "expert_id": "eb123456-89ab-cdef-0123-456789abcdef"}'::jsonb),
+('e1234567-89ab-cdef-0123-456789abcdef', 'payment_completed', 'Hoàn thành thanh toán', '192.168.1.1', 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', '{"transaction_id": "MOMO_TXN_001", "amount": 500000}'::jsonb),
+('b1234567-89ab-cdef-0123-456789abcdef', 'booking_confirmed', 'Xác nhận lịch hẹn tư vấn', '192.168.1.3', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '{"booking_id": "fb123456-89ab-cdef-0123-456789abcdef"}'::jsonb),
+('f1234567-89ab-cdef-0123-456789abcdef', 'login', 'Người dùng đăng nhập thành công', '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)', '{"device": "Android Samsung", "os": "Android 11"}'::jsonb),
+('f1234567-89ab-cdef-0123-456789abcdef', 'booking_created', 'Tạo lịch hẹn tư vấn mới', '192.168.1.2', 'Mozilla/5.0 (Linux; Android 11)', '{"booking_id": "fc123456-89ab-cdef-0123-456789abcdef", "expert_id": "ec123456-89ab-cdef-0123-456789abcdef"}'::jsonb),
+('a1234567-89ab-cdef-0123-456789abcdef', 'login', 'Quản trị viên đăng nhập', '192.168.1.10', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', '{"role": "admin", "ip": "192.168.1.10"}'::jsonb),
+('a1234567-89ab-cdef-0123-456789abcdef', 'system_settings_updated', 'Cập nhật cài đặt hệ thống', '192.168.1.10', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', '{"setting": "booking_reminder_minutes", "old_value": "60", "new_value": "45"}'::jsonb);
 
+-- 20. THÊM DỮ LIỆU LỊCH HẸN TRONG TƯƠNG LAI
+INSERT INTO tbl_consultation_bookings (booking_id, user_id, expert_profile_id, booking_datetime, duration_minutes, consultation_type, booking_status, user_notes, consultation_fee, payment_status) VALUES
+('ff123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'ec123456-89ab-cdef-0123-456789abcdef', '2024-12-25 10:00:00+07', 60, 'online', 'pending', 'Tư vấn chế độ ăn uống cho người tiểu đường', 500000, 'pending'),
+('fa123456-89ab-cdef-0123-456789abcdef', 'f1234567-89ab-cdef-0123-456789abcdef', 'ed123456-89ab-cdef-0123-456789abcdef', '2024-12-26 14:00:00+07', 30, 'offline', 'confirmed', 'Khám sức khỏe định kỳ', 500000, 'paid'),
+('fba12345-89ab-cdef-0123-456789abcdef', 'a2234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', '2024-12-27 09:00:00+07', 90, 'online', 'pending', 'Tư vấn sâu về vấn đề tâm lý', 700000, 'pending');
 
--- Indexes
+-- 21. THÊM ĐÁNH GIÁ MẪU
+INSERT INTO tbl_consultation_reviews (booking_id, reviewer_user_id, expert_profile_id, rating_score, review_comment, is_anonymous, is_visible) VALUES
+('fd123456-89ab-cdef-0123-456789abcdef', 'a2234567-89ab-cdef-0123-456789abcdef', 'ed123456-89ab-cdef-0123-456789abcdef', 4, 'Bác sĩ khám rất kỹ và tận tâm. Tôi sẽ quay lại lần sau.', false, true),
+('fb123456-89ab-cdef-0123-456789abcdef', 'e1234567-89ab-cdef-0123-456789abcdef', 'eb123456-89ab-cdef-0123-456789abcdef', 5, 'Buổi tư vấn rất hữu ích, chuyên gia rất am hiểu và nhiệt tình.', false, true);
 
-CREATE INDEX idx_users_username ON users (username);
-CREATE INDEX idx_users_email ON users (email);
-CREATE INDEX idx_experts_specialization ON experts (specialization);
-CREATE INDEX idx_bookings_start_time ON bookings (start_time);
-CREATE INDEX idx_bookings_end_time ON bookings (end_time);
-CREATE INDEX idx_notifications_user_id ON notifications (user_id);
-CREATE INDEX idx_feedback_client_id ON feedback (client_id);
-CREATE INDEX idx_feedback_expert_id ON feedback (expert_id);
-CREATE INDEX idx_ratings_client_id ON ratings (client_id);
-CREATE INDEX idx_ratings_expert_id ON ratings (expert_id);
-CREATE INDEX idx_payment_transactions_booking_id ON payment_transactions (booking_id);
+-- 22. CẬP NHẬT THỐNG KÊ CHUYÊN GIA
+UPDATE tbl_expert_profiles SET 
+    average_rating = (
+        SELECT AVG(rating_score) 
+        FROM tbl_consultation_reviews 
+        WHERE expert_profile_id = tbl_expert_profiles.expert_profile_id
+    ),
+    total_reviews = (
+        SELECT COUNT(*) 
+        FROM tbl_consultation_reviews 
+        WHERE expert_profile_id = tbl_expert_profiles.expert_profile_id
+    );
 
+-- 23. THÊM LỊCH LÀM VIỆC CHO CHUYÊN GIA TEST
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active)
+SELECT ep.expert_profile_id, 1, '08:00:00', '17:00:00', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
 
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active)
+SELECT ep.expert_profile_id, 3, '08:00:00', '17:00:00', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
+
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active)
+SELECT ep.expert_profile_id, 5, '08:00:00', '17:00:00', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
+
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active)
+SELECT ep.expert_profile_id, 2, '09:00:00', '16:00:00', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+INSERT INTO tbl_expert_working_hours (expert_profile_id, day_of_week, start_time, end_time, is_active)
+SELECT ep.expert_profile_id, 4, '09:00:00', '16:00:00', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+-- 24. THÊM CẤU HÌNH GIÁ CHO CHUYÊN GIA TEST
+INSERT INTO tbl_pricing_configs (expert_profile_id, service_type, consultation_type, duration_minutes, base_price, discount_percentage, is_active)
+SELECT ep.expert_profile_id, 'consultation', 'online', 60, 500000, 0, true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
+
+INSERT INTO tbl_pricing_configs (expert_profile_id, service_type, consultation_type, duration_minutes, base_price, discount_percentage, is_active)
+SELECT ep.expert_profile_id, 'consultation', 'offline', 60, 600000, 0, true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
+
+INSERT INTO tbl_pricing_configs (expert_profile_id, service_type, consultation_type, duration_minutes, base_price, discount_percentage, is_active)
+SELECT ep.expert_profile_id, 'consultation', 'online', 45, 400000, 0, true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+INSERT INTO tbl_pricing_configs (expert_profile_id, service_type, consultation_type, duration_minutes, base_price, discount_percentage, is_active)
+SELECT ep.expert_profile_id, 'consultation', 'online', 90, 600000, 10, true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+-- 25. THÊM CHUYÊN MÔN CHO CHUYÊN GIA TEST
+INSERT INTO tbl_expert_specializations (expert_profile_id, specialization_name, specialization_description, is_primary)
+SELECT ep.expert_profile_id, 'Tâm lý học lâm sàng', 'Điều trị các rối loạn tâm lý', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
+
+INSERT INTO tbl_expert_specializations (expert_profile_id, specialization_name, specialization_description, is_primary)
+SELECT ep.expert_profile_id, 'Tư vấn gia đình', 'Giải quyết các vấn đề trong gia đình', false
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia1@consultation.vn';
+
+INSERT INTO tbl_expert_specializations (expert_profile_id, specialization_name, specialization_description, is_primary)
+SELECT ep.expert_profile_id, 'Tư vấn nghề nghiệp', 'Định hướng phát triển sự nghiệp', true
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+INSERT INTO tbl_expert_specializations (expert_profile_id, specialization_name, specialization_description, is_primary)
+SELECT ep.expert_profile_id, 'Coaching cuộc sống', 'Hướng dẫn phát triển bản thân', false
+FROM tbl_expert_profiles ep
+JOIN tbl_users u ON ep.user_id = u.user_id
+WHERE u.user_email = 'chuyengia2@consultation.vn';
+
+-- ========================================
+-- HOÀN THÀNH CÀI ĐẶT DỮ LIỆU MẪU
+-- ========================================
+
+-- In thông báo hoàn thành
+SELECT 'Đã hoàn thành cài đặt dữ liệu mẫu cho hệ thống tư vấn!' as status;
+
+-- Kiểm tra số lượng records đã tạo
+SELECT 
+    'tbl_users' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_users
+UNION ALL
+SELECT 
+    'tbl_expert_profiles' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_expert_profiles
+UNION ALL
+SELECT 
+    'tbl_consultation_bookings' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_consultation_bookings
+UNION ALL
+SELECT 
+    'tbl_consultation_reviews' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_consultation_reviews
+UNION ALL
+SELECT 
+    'tbl_payment_transactions' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_payment_transactions
+UNION ALL
+SELECT 
+    'tbl_notification_templates' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_notification_templates
+UNION ALL
+SELECT 
+    'tbl_system_settings' as table_name, 
+    COUNT(*) as record_count 
+FROM tbl_system_settings
+ORDER BY table_name;

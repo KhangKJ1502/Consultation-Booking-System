@@ -1,0 +1,129 @@
+1. Quản lý người dùng (User Management)
+Đăng ký tài khoản (email, password, xác thực email)
+
+Đăng nhập, đăng xuất (JWT, refresh token)
+
+Quản lý hồ sơ cá nhân (cập nhật tên, avatar, mô tả, giới tính, số điện thoại)
+
+Đổi mật khẩu, quên mật khẩu (email OTP)
+
+Phân quyền: user, expert, admin
+
+Quản lý phiên đăng nhập, thiết bị
+
+Cấu hình nhận thông báo (app/email/telegram/sms)
+
+Xem lịch sử đặt lịch, lịch sử thông báo
+
+Xác thực 2 lớp (2FA, optional)
+
+2. Quản lý chuyên gia (Expert Management)
+Tạo/sửa hồ sơ chuyên gia (chuyên môn, kinh nghiệm, mô tả, bằng cấp)
+
+Quản lý lịch làm việc (theo tuần/ngày/slot)
+
+Quản lý thời gian nghỉ, off-time, lịch nghỉ định kỳ (recurrence)
+
+Thiết lập phí tư vấn, loại hình dịch vụ (online/offline)
+
+Quản lý đánh giá, phản hồi từ khách hàng
+
+Duyệt/verify hồ sơ chuyên gia (admin)
+
+3. Đặt lịch tư vấn (Booking)
+Tìm kiếm, lọc chuyên gia theo chuyên môn, rating, giá, lịch trống
+
+Xem lịch trống của chuyên gia (real-time, cache)
+
+Đặt lịch (chọn slot, ghi chú, hình thức)
+
+Kiểm tra trùng lịch (user & expert)
+
+Xác nhận/hủy lịch (theo deadline)
+
+Quản lý trạng thái lịch: pending, confirmed, rejected, cancelled, completed, missed, no_show
+
+Cập nhật nội dung cuộc hẹn trước giờ
+
+Tự động ẩn/khóa slot đã hết hạn hoặc đã đặt
+
+4. Quản lý thông báo (Notification)
+Gửi thông báo real-time (WebSocket/Ably/Redis PubSub)
+
+Gửi email xác nhận, nhắc lịch, thông báo trạng thái
+
+Gửi Telegram/SMS (nếu tích hợp)
+
+Quản lý dashboard thông báo, đánh dấu đã đọc/xóa
+
+Lưu lịch sử thông báo đã gửi, trạng thái gửi
+
+Cấu hình loại thông báo muốn nhận
+
+5. Quản lý background jobs & worker
+Cron nhắc lịch (quét lịch sắp diễn ra, gửi nhắc hẹn)
+
+Queue gửi email hàng loạt, retry khi lỗi
+
+Clean dữ liệu cũ (lịch, log, notification)
+
+Tổng hợp số liệu, thống kê định kỳ
+
+Giới hạn số job đồng thời, theo dõi trạng thái job
+
+6. Quản lý đánh giá & phản hồi (Review & Feedback)
+Đánh giá chuyên gia sau buổi tư vấn (rating, comment, ẩn danh)
+
+Quản lý hiển thị đánh giá (ẩn/hiện)
+
+Thống kê điểm trung bình, tổng số review
+
+7. Quản lý thanh toán (Payment)
+Giao dịch thanh toán (tích hợp Momo, ZaloPay, bank transfer…)
+
+Quản lý trạng thái giao dịch: pending, completed, failed, refunded
+
+Xem lịch sử thanh toán
+
+Quản lý bảng giá, cấu hình phí động
+
+8. Quản trị hệ thống (Admin & CMS)
+Quản lý user, chuyên gia, booking, feedback, notification
+
+Phân quyền chi tiết theo vai trò
+
+Quản lý cấu hình hệ thống (setting, maintenance mode)
+
+Theo dõi nhật ký hoạt động (audit log)
+
+Quản lý template thông báo
+
+Quản lý seed/test data
+
+Quản lý campaign, chương trình khuyến mãi (nếu có)
+
+9. API & Tích hợp ngoài (Integration)
+RESTful API cho toàn bộ nghiệp vụ
+
+Webhook với CMS/Directus khi dữ liệu thay đổi
+
+Tích hợp OAuth2 cho quản trị viên
+
+Tích hợp dịch vụ email, Telegram, SMS
+
+Tích hợp hệ thống thanh toán
+
+10. Tính năng nâng cao (Advanced/Optional)
+Lịch biểu trực quan (calendar view, drag & drop)
+
+Đặt lịch lặp lại (recurring booking)
+
+Gợi ý chuyên gia phù hợp (recommendation)
+
+Phân tích hành vi người dùng (analytics)
+
+Báo cáo doanh thu, hiệu suất chuyên gia
+
+Tích hợp AI chatbot tư vấn cơ bản
+
+Hỗ trợ giao diện TUI (text-based UI) hoặc mobile app

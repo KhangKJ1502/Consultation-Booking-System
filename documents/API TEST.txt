@@ -15,13 +15,82 @@ HTTP Status Code nên sử dụng
 409 Conflict - Booking đã bị cancel hoặc không thể cancel
 
 User;
-Ping API: http://localhost:8899/ping/100 
-Register: http://localhost:8899/register 
-Login: http://localhost:8899/user/v1/login
-Logout: http://localhost:8899/user/v2/logout
-GetInfor: http://localhost:8899/user/v2/GetInfor 
+User API Endpoints
+System APIs
 
-Expert:
+Ping API: http://localhost:8899/ping/100
+
+Public APIs (No Authentication Required)
+Authentication
+
+Register: http://localhost:8899/user/v1/register
+Login: http://localhost:8899/user/v1/login
+Refresh Token: http://localhost:8899/user/v1/refresh-token
+Reset Password: http://localhost:8899/user/v1/reset-password
+Confirm Reset Password: http://localhost:8899/user/v1/confirm-reset
+
+Private APIs (JWT Authentication Required)
+User Profile Management
+
+Get User Info: http://localhost:8899/user/v2/GetInfor
+Update User Info: http://localhost:8899/user/v2/update
+Update Email: http://localhost:8899/user/v2/email
+
+Authentication Management
+
+Logout: http://localhost:8899/user/v2/logout
+Logout All Sessions: http://localhost:8899/user/v2/logout-all
+Change Password: http://localhost:8899/user/v2/change-password
+Delete Account: http://localhost:8899/user/v2/account
+Token Management
+Get Active Tokens: http://localhost:8899/user/v2/tokens
+Revoke Token: http://localhost:8899/user/v2/tokens/{tokenID}
+
+Admin APIs (JWT Authentication + Admin Role Required)
+User Management
+Get Users By Role: http://localhost:8899/user/v3/users?role={role}&page={page}&limit={limit}
+Search Users: http://localhost:8899/user/v3/users/search
+Update User Role: http://localhost:8899/user/v3/users/{userID}/role
+Deactivate User: http://localhost:8899/user/v3/users/{userID}/deactivate
+Activate User: http://localhost:8899/user/v3/users/{userID}/activate
+
+API Details by HTTP Method
+GET Methods
+
+GET http://localhost:8899/ping/100
+GET http://localhost:8899/user/v2/GetInfor
+GET http://localhost:8899/user/v2/logout
+GET http://localhost:8899/user/v2/tokens
+GET http://localhost:8899/user/v3/users
+
+POST Methods
+
+POST http://localhost:8899/user/v1/register
+POST http://localhost:8899/user/v1/login
+POST http://localhost:8899/user/v1/refresh-token
+POST http://localhost:8899/user/v1/reset-password
+POST http://localhost:8899/user/v1/confirm-reset
+POST http://localhost:8899/user/v2/logout-all
+POST http://localhost:8899/user/v2/change-password
+POST http://localhost:8899/user/v3/users/search
+
+PUT Methods
+
+PUT http://localhost:8899/user/v2/update
+PUT http://localhost:8899/user/v2/email
+PUT http://localhost:8899/user/v3/users/{userID}/role
+PUT http://localhost:8899/user/v3/users/{userID}/deactivate
+PUT http://localhost:8899/user/v3/users/{userID}/activate
+
+DELETE Methods
+
+DELETE http://localhost:8899/user/v2/account
+DELETE http://localhost:8899/user/v2/tokens/{tokenID}
+
+
++=+========================================+++++++
+                     EXPERT 
++================================================+
 Create Expert: http://localhost:8899/expert/v2/createExpert
 Update Expert: http://localhost:8899/expert/v2/update
 GetAll Expert: http://localhost:8899/expert/v1/getAllExpert 
@@ -37,7 +106,9 @@ Create Working Hour: http://localhost:8899/expert/v2/
 Update Working Hour: http://localhost:8899/expert/v2/unavailableTime
 Get Working Hour: http://localhost:8899/expert/v1/unavailableTime/:expertId 
 
-Booking:
++==================================================+
+                      BOOKING
++==================================================+
 Create Booking: http://localhost:8899/booking/v2/ *
 Update Booking Notes : http://localhost:8899/booking/v2/update-notes
 Cancel Booking: http://localhost:8899/booking/v2/cancel/:bookingID *

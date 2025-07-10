@@ -70,6 +70,7 @@ func (h *EventHandler) handleProfileUpdatedNotification(event NotificationEvent)
 	log.Printf("✅ Profile updated notification processed for user: %s", event.UserID)
 	return nil
 }
+
 func (h *EventHandler) handleBookingConfirmationNotification(event NotificationEvent) error {
 	log.Printf("📬 Sending booking confirmation email to user: %s", event.UserID)
 

@@ -23,6 +23,8 @@ type UserCache interface {
 	InvalidateToken(ctx context.Context, token string) error
 	CheckTokenExists(ctx context.Context, key string) (bool, error)
 	SetToken(ctx context.Context, token string, userID uuid.UUID, expiration time.Duration) error
+	InvalidateAllUserTokens(ctx context.Context, userID uuid.UUID) error
+	InvalidateAllUserTokensOptimized(ctx context.Context, userID uuid.UUID) error
 }
 
 type RedisUserCache struct {
@@ -192,5 +194,156 @@ func (s *RedisUserCache) SetToken(ctx context.Context, token string, userID uuid
 		zap.String("key", key),
 		zap.String("userID", userID.String()),
 		zap.Duration("expiration", expiration))
+	return nil
+}
+
+// InvalidateAllUserTokens xóa tất cả tokens của một user khỏi cache
+func (s *RedisUserCache) InvalidateAllUserTokens(ctx context.Context, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return fmt.Errorf("userID must not be empty")
+	}
+
+	if s.redisCache == nil {
+		s.logger.Error("Redis cache not initialized")
+		return ErrCacheUnavailable
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Tìm tất cả keys có pattern "auth:*" và check value có chứa userID
+	pattern := "auth:*"
+	keys, err := s.redisCache.Client.Keys(timeoutCtx, pattern).Result()
+	if err != nil {
+		s.logger.Error("Failed to get keys for pattern",
+			zap.Error(err),
+			zap.String("pattern", pattern))
+		return fmt.Errorf("failed to get keys: %w", err)
+	}
+
+	if len(keys) == 0 {
+		s.logger.Debug("No auth keys found", zap.String("userID", userID.String()))
+		return nil
+	}
+
+	// Tạo pipeline để xóa tất cả keys của user
+	pipe := s.redisCache.Client.Pipeline()
+	var keysToDelete []string
+
+	// Check từng key để xem có thuộc về user không
+	for _, key := range keys {
+		var storedUserID uuid.UUID
+		err := s.redisCache.Get(timeoutCtx, key, &storedUserID)
+		if err != nil {
+			// Nếu key không tồn tại hoặc lỗi, skip
+			if !errors.Is(err, redis.Nil) {
+				s.logger.Debug("Error checking key", zap.Error(err), zap.String("key", key))
+			}
+			continue
+		}
+
+		// Nếu userID match thì thêm vào danh sách xóa
+		if storedUserID == userID {
+			pipe.Del(timeoutCtx, key)
+			keysToDelete = append(keysToDelete, key)
+		}
+	}
+
+	// Nếu không có keys nào để xóa
+	if len(keysToDelete) == 0 {
+		s.logger.Debug("No tokens found for user", zap.String("userID", userID.String()))
+		return nil
+	}
+
+	// Thực hiện xóa
+	_, err = pipe.Exec(timeoutCtx)
+	if err != nil {
+		s.logger.Error("Failed to delete user tokens",
+			zap.Error(err),
+			zap.String("userID", userID.String()),
+			zap.Strings("keys", keysToDelete))
+		return fmt.Errorf("failed to delete user tokens: %w", err)
+	}
+
+	s.logger.Info("Successfully invalidated user tokens",
+		zap.String("userID", userID.String()),
+		zap.Int("count", len(keysToDelete)),
+		zap.Strings("keys", keysToDelete))
+
+	return nil
+}
+
+// InvalidateAllUserTokensOptimized - phiên bản tối ưu hơn với scan
+func (s *RedisUserCache) InvalidateAllUserTokensOptimized(ctx context.Context, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return fmt.Errorf("userID must not be empty")
+	}
+
+	if s.redisCache == nil {
+		s.logger.Error("Redis cache not initialized")
+		return ErrCacheUnavailable
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var keysToDelete []string
+	var cursor uint64
+
+	// Sử dụng SCAN thay vì KEYS để tránh block Redis
+	for {
+		keys, nextCursor, err := s.redisCache.Client.Scan(timeoutCtx, cursor, "auth:*", 100).Result()
+		if err != nil {
+			s.logger.Error("Failed to scan keys",
+				zap.Error(err),
+				zap.String("userID", userID.String()))
+			return fmt.Errorf("failed to scan keys: %w", err)
+		}
+
+		// Check từng key
+		for _, key := range keys {
+			var storedUserID uuid.UUID
+			err := s.redisCache.Get(timeoutCtx, key, &storedUserID)
+			if err != nil {
+				continue // Skip nếu không đọc được
+			}
+
+			if storedUserID == userID {
+				keysToDelete = append(keysToDelete, key)
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	// Nếu không có keys nào để xóa
+	if len(keysToDelete) == 0 {
+		s.logger.Debug("No tokens found for user", zap.String("userID", userID.String()))
+		return nil
+	}
+
+	// Xóa tất cả keys tìm được
+	pipe := s.redisCache.Client.Pipeline()
+	for _, key := range keysToDelete {
+		pipe.Del(timeoutCtx, key)
+	}
+
+	_, err := pipe.Exec(timeoutCtx)
+	if err != nil {
+		s.logger.Error("Failed to delete user tokens",
+			zap.Error(err),
+			zap.String("userID", userID.String()),
+			zap.Strings("keys", keysToDelete))
+		return fmt.Errorf("failed to delete user tokens: %w", err)
+	}
+
+	s.logger.Info("Successfully invalidated user tokens",
+		zap.String("userID", userID.String()),
+		zap.Int("count", len(keysToDelete)),
+		zap.Strings("keys", keysToDelete))
+
 	return nil
 }
