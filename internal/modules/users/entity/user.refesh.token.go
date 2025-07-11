@@ -33,7 +33,7 @@ import (
 
 // UserToken represents a user token (refresh token or password reset token)
 type UserToken struct {
-	TokenID   uuid.UUID  `db:"token_id" json:"token_id"`
+	TokenID   uuid.UUID  `db:"token_id" json:"token_id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
 	UserID    uuid.UUID  `db:"user_id" json:"user_id"`
 	TokenHash string     `db:"token_hash" json:"token_hash"`
 	TokenType string     `db:"token_type" json:"token_type"` // "refresh" or "password_reset"

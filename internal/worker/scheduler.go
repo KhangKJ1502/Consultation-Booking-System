@@ -3,7 +3,6 @@ package worker
 import (
 	"cbs_backend/internal/service/interfaces"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -82,10 +81,13 @@ func NewWorkerScheduler(db *gorm.DB, maxWorkers int, emailService interfaces.Ema
 }
 
 func (ws *WorkerScheduler) initializeServices(db *gorm.DB, emailService interfaces.EmailService, redisClient *redis.Client) {
-	ws.reminderSvc = NewReminderService(db, emailService)
 	ws.cleanupSvc = NewCleanupService(db)
 	ws.notificationSvc = NewNotificationService(db)
 	ws.enhancedNotifySvc = NewEnhancedNotificationService(db, redisClient, emailService)
+
+	// Fix: Pass the enhancedNotifySvc as the dispatcher parameter
+	ws.reminderSvc = NewReminderService(db, emailService, ws.enhancedNotifySvc)
+
 	ws.jobProcessor = NewJobProcessor(db)
 }
 
@@ -100,9 +102,6 @@ func (ws *WorkerScheduler) Start() error {
 	if err := ws.startWorkers(); err != nil {
 		return err
 	}
-
-	// Start notification processor
-	go ws.notificationProcessor()
 
 	// Schedule all cron jobs
 	if err := ws.scheduleCronJobs(); err != nil {
@@ -225,9 +224,6 @@ func (ws *WorkerScheduler) executeJob(job Job) error {
 
 	case "send_email_batch":
 		return ws.notificationSvc.ProcessEmailBatch(job.Payload)
-
-	case "process_notifications":
-		return ws.processNotifications()
 
 	case "send_email", "send_telegram", "send_sms":
 		return ws.enhancedNotifySvc.ProcessNotificationJob(job)
@@ -403,160 +399,6 @@ func (ws *WorkerScheduler) scheduleTestJob() {
 			CreatedAt:  time.Now(),
 		})
 	}()
-}
-
-// =====================================================================
-// NOTIFICATION PROCESSING
-// =====================================================================
-
-func (ws *WorkerScheduler) notificationProcessor() {
-	ticker := time.NewTicker(NotificationCheckInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := ws.processNotifications(); err != nil {
-				log.Printf("⚠️ Failed to process notifications: %v", err)
-			}
-		case <-ws.ctx.Done():
-			log.Println("🛑 Notification processor stopped")
-			return
-		}
-	}
-}
-
-func (ws *WorkerScheduler) processNotifications() error {
-	notifications, err := ws.fetchPendingNotifications()
-	if err != nil {
-		return fmt.Errorf("failed to get pending notifications: %w", err)
-	}
-
-	if len(notifications) > 0 {
-		log.Printf("📧 Found %d pending email notifications", len(notifications))
-	}
-
-	for _, notification := range notifications {
-		if err := ws.processNotification(notification); err != nil {
-			log.Printf("⚠️ Failed to process notification %s: %v", notification.NotificationID, err)
-		}
-	}
-
-	return nil
-}
-
-func (ws *WorkerScheduler) fetchPendingNotifications() ([]struct {
-	NotificationID string `json:"notification_id"`
-	UserID         string `json:"user_id"`
-	UserEmail      string `json:"user_email"`
-	Title          string `json:"title"`
-	Message        string `json:"message"`
-	Data           string `json:"data"`
-}, error) {
-	var notifications []struct {
-		NotificationID string `json:"notification_id"`
-		UserID         string `json:"user_id"`
-		UserEmail      string `json:"user_email"`
-		Title          string `json:"title"`
-		Message        string `json:"message"`
-		Data           string `json:"data"`
-	}
-
-	query := `
-        SELECT 
-            sn.notification_id,
-            sn.recipient_user_id as user_id,
-            u.user_email,
-            sn.notification_title as title,
-            sn.notification_message as message,
-            sn.notification_data as data
-        FROM tbl_system_notifications sn
-        JOIN tbl_users u ON sn.recipient_user_id = u.user_id
-        WHERE sn.notification_status = 'pending'
-        AND 'email' = ANY(sn.delivery_methods)
-        AND sn.notification_created_at >= NOW() - INTERVAL '1 hour'
-        ORDER BY sn.notification_created_at ASC
-        LIMIT 50
-    `
-
-	err := ws.db.Raw(query).Scan(&notifications).Error
-	return notifications, err
-}
-
-func (ws *WorkerScheduler) processNotification(notification struct {
-	NotificationID string `json:"notification_id"`
-	UserID         string `json:"user_id"`
-	UserEmail      string `json:"user_email"`
-	Title          string `json:"title"`
-	Message        string `json:"message"`
-	Data           string `json:"data"`
-}) error {
-	// Parse notification data
-	dataMap, err := ws.parseNotificationData(notification.Data)
-	if err != nil {
-		return err
-	}
-
-	// Add essential fields
-	dataMap["notification_id"] = notification.NotificationID
-	dataMap["user_id"] = notification.UserID
-
-	// Update status to processing
-	if err := ws.updateNotificationStatus(notification.NotificationID, "processing"); err != nil {
-		return err
-	}
-
-	// Create and add email job
-	emailJob := ws.createEmailJob(notification, dataMap)
-	ws.AddJob(emailJob)
-
-	log.Printf("➕ Added email job for notification %s", notification.NotificationID)
-	return nil
-}
-
-func (ws *WorkerScheduler) parseNotificationData(data string) (map[string]interface{}, error) {
-	dataMap := make(map[string]interface{})
-
-	if data != "" {
-		if err := json.Unmarshal([]byte(data), &dataMap); err != nil {
-			return nil, fmt.Errorf("failed to parse notification data: %w", err)
-		}
-	}
-
-	return dataMap, nil
-}
-
-func (ws *WorkerScheduler) updateNotificationStatus(notificationID, status string) error {
-	return ws.db.Exec(
-		"UPDATE tbl_system_notifications SET notification_status = ? WHERE notification_id = ?",
-		status, notificationID,
-	).Error
-}
-
-func (ws *WorkerScheduler) createEmailJob(notification struct {
-	NotificationID string `json:"notification_id"`
-	UserID         string `json:"user_id"`
-	UserEmail      string `json:"user_email"`
-	Title          string `json:"title"`
-	Message        string `json:"message"`
-	Data           string `json:"data"`
-}, dataMap map[string]interface{}) Job {
-	return Job{
-		ID:   generateJobID(),
-		Type: "send_email",
-		Payload: map[string]interface{}{
-			"notification_id": notification.NotificationID,
-			"user_id":         notification.UserID,
-			"recipient":       notification.UserEmail,
-			"subject":         notification.Title,
-			"body":            notification.Message,
-			"data":            dataMap,
-			"template":        "notification",
-		},
-		Priority:   1,
-		MaxRetries: 3,
-		CreatedAt:  time.Now(),
-	}
 }
 
 // =====================================================================

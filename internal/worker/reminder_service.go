@@ -6,7 +6,6 @@ import (
 	entityNotify "cbs_backend/internal/modules/system_notification/entity"
 	entitySystem "cbs_backend/internal/modules/system_setting/entity"
 	"cbs_backend/internal/service/interfaces"
-	"context"
 	"fmt"
 	"log"
 	"time"
@@ -46,17 +45,24 @@ type DuplicateBooking struct {
 	Count           int       `json:"count"`
 }
 
+// NotificationDispatcher interface for dispatching notifications
+type NotificationDispatcher interface {
+	DispatchNotification(jobType string, payload interface{}) error
+}
+
 // ReminderService handles all booking reminder operations
 type ReminderService struct {
 	db           *gorm.DB
+	dispatcher   NotificationDispatcher
 	emailService interfaces.EmailService
 }
 
 // NewReminderService creates a new instance of ReminderService
-func NewReminderService(db *gorm.DB, emailService interfaces.EmailService) *ReminderService {
+func NewReminderService(db *gorm.DB, emailService interfaces.EmailService, dispatcher NotificationDispatcher) *ReminderService {
 	return &ReminderService{
 		db:           db,
 		emailService: emailService,
+		dispatcher:   dispatcher,
 	}
 }
 
@@ -95,26 +101,26 @@ func (rs *ReminderService) getUpcomingBookings() ([]BookingData, error) {
 	var bookings []BookingData
 
 	query := `
-			SELECT 
-				cb.booking_id,
-				cb.user_id,
-				cb.expert_profile_id,
-				cb.booking_datetime,
-				u.user_email,
-				u.full_name as user_full_name,
-				eu.user_email as expert_email,
-				eu.full_name as expert_full_name,
-				cb.consultation_type,
-				cb.meeting_link,
-				cb.meeting_address
-			FROM tbl_consultation_bookings cb
-			JOIN tbl_users u ON cb.user_id = u.user_id
-			JOIN tbl_expert_profiles ep ON cb.expert_profile_id = ep.expert_profile_id
-			JOIN tbl_users eu ON ep.user_id = eu.user_id
-			WHERE cb.booking_status = 'confirmed'
-			AND cb.reminder_sent = false
-			AND cb.booking_datetime BETWEEN NOW() AND NOW() + INTERVAL '1 hour'
-		`
+		SELECT 
+			cb.booking_id,
+			cb.user_id,
+			cb.expert_profile_id,
+			cb.booking_datetime,
+			u.user_email,
+			u.full_name as user_full_name,
+			eu.user_email as expert_email,
+			eu.full_name as expert_full_name,
+			cb.consultation_type,
+			cb.meeting_link,
+			cb.meeting_address
+		FROM tbl_consultation_bookings cb
+		JOIN tbl_users u ON cb.user_id = u.user_id
+		JOIN tbl_expert_profiles ep ON cb.expert_profile_id = ep.expert_profile_id
+		JOIN tbl_users eu ON ep.user_id = eu.user_id
+		WHERE cb.booking_status = 'confirmed'
+		AND cb.reminder_sent = false
+		AND cb.booking_datetime BETWEEN NOW() AND NOW() + INTERVAL '1 hour'
+	`
 
 	return bookings, rs.db.Raw(query).Scan(&bookings).Error
 }
@@ -171,16 +177,16 @@ func (rs *ReminderService) sendReminderToUser(booking BookingData) error {
 		return fmt.Errorf("failed to create notification: %w", err)
 	}
 
-	// Send email if service is available
-	if rs.emailService != nil {
-		emailData := rs.createUserEmailData(booking)
-		if err := rs.emailService.SendConsultationBookingRemindersToUser(
-			context.Background(), booking.UserID, emailData); err != nil {
-			return fmt.Errorf("failed to send email to user %s: %w", booking.UserEmail, err)
+	// Send email through dispatcher - SYNCHRONIZED WITH EnhancedNotificationService
+	if rs.dispatcher != nil {
+		payload := rs.createUserEmailPayload(booking)
+		if err := rs.dispatcher.DispatchNotification(JobTypeSendEmail, payload); err != nil {
+			log.Printf("❌ Failed to dispatch email notification: %v", err)
+			return fmt.Errorf("failed to dispatch email notification: %w", err)
 		}
-		log.Printf("✅ Email sent to user: %s", booking.UserEmail)
+		log.Printf("✅ Email notification dispatched to user: %s", booking.UserEmail)
 	} else {
-		log.Printf("⚠️ Email service is not configured")
+		log.Printf("⚠️ Dispatcher is not configured")
 	}
 
 	return nil
@@ -219,23 +225,50 @@ func (rs *ReminderService) createUserNotification(userUUID uuid.UUID, booking Bo
 	}
 }
 
-// createUserEmailData creates email data for user
-func (rs *ReminderService) createUserEmailData(booking BookingData) interfaces.ConsultationReminderData {
-	return interfaces.ConsultationReminderData{
-		BookingID:        booking.BookingID,
-		UserID:           booking.UserID,
-		UserName:         booking.UserFullName,
-		UserEmail:        booking.UserEmail,
-		ExpertID:         booking.ExpertProfileID,
-		ExpertName:       booking.ExpertFullName,
-		ExpertEmail:      booking.ExpertEmail,
-		ConsultationDate: booking.BookingDatetime.Format("02/01/2006"),
-		ConsultationTime: booking.BookingDatetime.Format("15:04"),
-		MeetingLink:      booking.MeetingLink,
-		Location:         booking.MeetingAddress,
-		ConsultationType: booking.ConsultationType,
-		TimeUntil:        "1 giờ",
+// createUserEmailPayload creates email payload for user reminder - SYNCHRONIZED
+func (rs *ReminderService) createUserEmailPayload(booking BookingData) map[string]interface{} {
+	return map[string]interface{}{
+		"from":      "user", // Thêm field "from" để sync với EnhancedNotificationService
+		"user_id":   booking.UserID,
+		"recipient": booking.UserEmail,
+		"subject":   "Nhắc nhở: Lịch tư vấn sắp diễn ra",
+		"body":      rs.createUserEmailBody(booking),
+		"template":  "booking_reminder",
+		"data": map[string]interface{}{
+			"booking_id":        booking.BookingID,
+			"user_name":         booking.UserFullName,
+			"user_email":        booking.UserEmail,
+			"expert_id":         booking.ExpertProfileID,
+			"expert_name":       booking.ExpertFullName,
+			"expert_email":      booking.ExpertEmail,
+			"consultation_date": booking.BookingDatetime.Format("02/01/2006"),
+			"consultation_time": booking.BookingDatetime.Format("15:04"),
+			"meeting_link":      booking.MeetingLink,
+			"location":          booking.MeetingAddress,
+			"consultation_type": booking.ConsultationType,
+			"time_until":        "1 giờ",
+		},
 	}
+}
+
+// createUserEmailBody creates email body for user
+func (rs *ReminderService) createUserEmailBody(booking BookingData) string {
+	body := fmt.Sprintf("Xin chào %s,\n\nBạn có lịch tư vấn với %s vào lúc %s.\n\nLoại tư vấn: %s\n",
+		booking.UserFullName,
+		booking.ExpertFullName,
+		booking.BookingDatetime.Format("15:04 02/01/2006"),
+		booking.ConsultationType,
+	)
+
+	if booking.MeetingLink != "" {
+		body += fmt.Sprintf("Link tham gia: %s\n", booking.MeetingLink)
+	} else if booking.MeetingAddress != "" {
+		body += fmt.Sprintf("Địa chỉ: %s\n", booking.MeetingAddress)
+	}
+
+	body += "\nVui lòng chuẩn bị sẵn sàng cho buổi tư vấn.\n\nTrân trọng,\nĐội ngũ CBS"
+
+	return body
 }
 
 // ===========================================
@@ -262,16 +295,16 @@ func (rs *ReminderService) sendReminderToExpert(booking BookingData) error {
 		return fmt.Errorf("failed to create notification for expert: %w", err)
 	}
 
-	// Send email if service is available
-	if rs.emailService != nil {
-		emailData := rs.createExpertEmailData(booking, expertUserID)
-		if err := rs.emailService.SendConsultationBookingRemindersToExpert(
-			context.Background(), expertUserID, emailData); err != nil {
-			return fmt.Errorf("failed to send email to expert %s: %w", booking.ExpertEmail, err)
+	// Send email through dispatcher - SYNCHRONIZED WITH EnhancedNotificationService
+	if rs.dispatcher != nil {
+		payload := rs.createExpertEmailPayload(booking, expertUserID)
+		if err := rs.dispatcher.DispatchNotification(JobTypeSendEmail, payload); err != nil {
+			log.Printf("❌ Failed to dispatch email notification to expert: %v", err)
+			return fmt.Errorf("failed to dispatch email notification to expert: %w", err)
 		}
-		log.Printf("✅ Email sent to expert: %s", booking.ExpertEmail)
+		log.Printf("✅ Email notification dispatched to expert: %s", booking.ExpertEmail)
 	} else {
-		log.Printf("⚠️ Email service is not configured")
+		log.Printf("⚠️ Dispatcher is not configured")
 	}
 
 	return nil
@@ -320,23 +353,50 @@ func (rs *ReminderService) createExpertNotification(expertUserUUID uuid.UUID, bo
 	}
 }
 
-// createExpertEmailData creates email data for expert
-func (rs *ReminderService) createExpertEmailData(booking BookingData, expertUserID string) interfaces.ConsultationReminderData {
-	return interfaces.ConsultationReminderData{
-		BookingID:        booking.BookingID,
-		UserID:           expertUserID,
-		UserName:         booking.ExpertFullName,
-		UserEmail:        booking.ExpertEmail,
-		ExpertID:         booking.ExpertProfileID,
-		ExpertName:       booking.ExpertFullName,
-		ExpertEmail:      booking.ExpertEmail,
-		ConsultationDate: booking.BookingDatetime.Format("02/01/2006"),
-		ConsultationTime: booking.BookingDatetime.Format("15:04"),
-		MeetingLink:      booking.MeetingLink,
-		Location:         booking.MeetingAddress,
-		ConsultationType: booking.ConsultationType,
-		TimeUntil:        "1 giờ",
+// createExpertEmailPayload creates email payload for expert reminder - SYNCHRONIZED
+func (rs *ReminderService) createExpertEmailPayload(booking BookingData, expertUserID string) map[string]interface{} {
+	return map[string]interface{}{
+		"from":      "expert", // Thêm field "from" để sync với EnhancedNotificationService
+		"user_id":   expertUserID,
+		"recipient": booking.ExpertEmail,
+		"subject":   "Nhắc nhở: Lịch tư vấn sắp diễn ra",
+		"body":      rs.createExpertEmailBody(booking),
+		"template":  "booking_reminder",
+		"data": map[string]interface{}{
+			"booking_id":        booking.BookingID,
+			"user_name":         booking.UserFullName,
+			"user_email":        booking.UserEmail,
+			"expert_id":         booking.ExpertProfileID,
+			"expert_name":       booking.ExpertFullName,
+			"expert_email":      booking.ExpertEmail,
+			"consultation_date": booking.BookingDatetime.Format("02/01/2006"),
+			"consultation_time": booking.BookingDatetime.Format("15:04"),
+			"meeting_link":      booking.MeetingLink,
+			"location":          booking.MeetingAddress,
+			"consultation_type": booking.ConsultationType,
+			"time_until":        "1 giờ",
+		},
 	}
+}
+
+// createExpertEmailBody creates email body for expert
+func (rs *ReminderService) createExpertEmailBody(booking BookingData) string {
+	body := fmt.Sprintf("Xin chào %s,\n\nBạn có lịch tư vấn với khách hàng %s vào lúc %s.\n\nLoại tư vấn: %s\n",
+		booking.ExpertFullName,
+		booking.UserFullName,
+		booking.BookingDatetime.Format("15:04 02/01/2006"),
+		booking.ConsultationType,
+	)
+
+	if booking.MeetingLink != "" {
+		body += fmt.Sprintf("Link tham gia: %s\n", booking.MeetingLink)
+	} else if booking.MeetingAddress != "" {
+		body += fmt.Sprintf("Địa chỉ: %s\n", booking.MeetingAddress)
+	}
+
+	body += "\nVui lòng chuẩn bị sẵn sàng cho buổi tư vấn.\n\nTrân trọng,\nĐội ngũ CBS"
+
+	return body
 }
 
 // ===========================================
@@ -390,15 +450,15 @@ func (rs *ReminderService) findDuplicateBookings() ([]DuplicateBooking, error) {
 	var duplicates []DuplicateBooking
 
 	query := `
-			SELECT 
-				expert_profile_id,
-				booking_datetime,
-				COUNT(*) as count
-			FROM tbl_consultation_bookings 
-			WHERE booking_status IN ('pending', 'confirmed')
-			GROUP BY expert_profile_id, booking_datetime
-			HAVING COUNT(*) > 1
-		`
+		SELECT 
+			expert_profile_id,
+			booking_datetime,
+			COUNT(*) as count
+		FROM tbl_consultation_bookings 
+		WHERE booking_status IN ('pending', 'confirmed')
+		GROUP BY expert_profile_id, booking_datetime
+		HAVING COUNT(*) > 1
+	`
 
 	return duplicates, rs.db.Raw(query).Scan(&duplicates).Error
 }

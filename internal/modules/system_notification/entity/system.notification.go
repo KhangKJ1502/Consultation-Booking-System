@@ -17,6 +17,7 @@ type SystemNotification struct {
 	NotificationType      string         `json:"notification_type" db:"notification_type" gorm:"type:varchar(50);not null"`
 	NotificationTitle     string         `json:"notification_title" db:"notification_title" gorm:"type:varchar(255);not null"`
 	NotificationMessage   string         `json:"notification_message" db:"notification_message" gorm:"type:text;not null"`
+	NotificationStatus    string         `json:"notification_status" db:"notification_status" gorm:"type:varchar(50);default:'pending'"`
 	NotificationData      common.JSONB   `json:"notification_data,omitempty" db:"notification_data" gorm:"type:jsonb"`
 	IsRead                bool           `json:"is_read" db:"is_read" gorm:"default:false"`
 	DeliveryMethods       pq.StringArray `json:"delivery_methods" db:"delivery_methods" gorm:"type:varchar(20)[];default:ARRAY['app']"`

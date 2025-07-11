@@ -175,7 +175,7 @@ func (ces *ConsultationEmailService) SendReminderToUser(ctx context.Context, use
 		// fallback gửi email text đơn giản
 	}
 	templateData := map[string]interface{}{
-		"UserName":         data.UserName,
+		"expert_name":      data.UserName,
 		"BookingID":        data.BookingID,
 		"ConsultationDate": data.ConsultationDate,
 		"ConsultationTime": data.ConsultationTime,
@@ -197,10 +197,10 @@ func (ces *ConsultationEmailService) sendReminderToExpert(ctx context.Context, u
 		// fallback gửi email text đơn giản
 	}
 	templateData := map[string]interface{}{
-		"UserName":         data.UserName,
+		"user_name":        data.UserName,
 		"BookingID":        data.BookingID,
-		"ConsultationDate": data.ConsultationDate,
-		"ConsultationTime": data.ConsultationTime,
+		"booking_datetime": data.ConsultationDate,
+		"booking_time":     data.ConsultationTime,
 		"MeetingLink":      data.MeetingLink,
 		"Location":         data.Location,
 		"TimeUntil":        data.TimeUntil,

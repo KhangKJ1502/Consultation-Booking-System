@@ -17,6 +17,8 @@ type ConectionConfigs struct {
 	RedisCF    *RedisConfig
 	ServerCF   *ServerConfig
 	SMTPCF     *STMPConfig
+	SMSCF      *SMSConfig
+	TLGCF      *TelegramConfig
 }
 type STMPConfig struct {
 	SmtpHost     string
@@ -36,6 +38,14 @@ type ServerConfig struct {
 	JWTExpiry time.Duration
 }
 
+type SMSConfig struct {
+	SMSApiKey string
+	SMSApiURL string
+}
+
+type TelegramConfig struct {
+	TELEGRAM_BOT_TOKEN string
+}
 type DataBasePostgresConfig struct {
 	Host     string
 	Port     string
@@ -112,6 +122,13 @@ func LoadConfigs() (*ConectionConfigs, error) { // Try to load .env file from mu
 			ReplyTo:      getEnv("REPLY_TO", "support@company.com"),
 			FromEmail:    getEnv("FROM_Email", "truongvankhangthanthanh@gmail.com"),
 			BaseURL:      getEnv("BASE_URL", "http://localhost:8899"),
+		},
+		SMSCF: &SMSConfig{
+			SMSApiKey: getEnv("SMS_API_KEY", "123abc"),
+			SMSApiURL: getEnv("SMS_API_URL", "jadghasd"),
+		},
+		TLGCF: &TelegramConfig{
+			TELEGRAM_BOT_TOKEN: getEnv("TELEGRAM_BOT_TOKEN", "23456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"),
 		},
 		PostgresCF: &DataBasePostgresConfig{
 			Host:     getEnv("DB_HOST_POSTGRES", "localhost"),

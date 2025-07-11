@@ -165,7 +165,7 @@ func (us *userService) Login(ctx context.Context, req dtousergo.LoginRequest) (*
 	var tokens []entityuser.UserToken
 	if err := us.db.WithContext(ctx).
 		Where("user_id = ?", user.UserID).
-		Order("token_created_at asc").
+		Order("created_at asc").
 		Find(&tokens).Error; err != nil {
 		return nil, fmt.Errorf("failed to fetch existing refresh tokens: %v", err)
 	}
@@ -176,7 +176,7 @@ func (us *userService) Login(ctx context.Context, req dtousergo.LoginRequest) (*
 		for i, t := range tokensToDelete {
 			ids[i] = t.TokenID
 		}
-		if err := us.db.WithContext(ctx).Where("refresh_token_id IN ?", ids).Delete(&entityuser.UserToken{}).Error; err != nil {
+		if err := us.db.WithContext(ctx).Where("token_id IN ?", ids).Delete(&entityuser.UserToken{}).Error; err != nil {
 			return nil, fmt.Errorf("failed to delete old refresh tokens: %v", err)
 		}
 	}

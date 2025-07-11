@@ -39,7 +39,6 @@ func (ur *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 		private.GET("/profile", response.Wrap(userCtrl.GetInfor))        // Lấy thông tin người dùng
 		private.PUT("/profile", response.Wrap(userCtrl.UpdateInforUser)) // Cập nhật thông tin người dùng
 		private.PUT("/email", response.Wrap(userCtrl.UpdateEmail))       // Cập nhật email
-
 		// Authentication management routes
 		private.POST("/logout", response.Wrap(userCtrl.Logout))                  // Đăng xuất
 		private.POST("/logout-all", response.Wrap(userCtrl.LogoutAllSessions))   // Đăng xuất tất cả phiên
