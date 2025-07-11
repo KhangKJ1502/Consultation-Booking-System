@@ -29,8 +29,9 @@ type ConsultationBooking struct {
 	CancelledByUserID  *uuid.UUID `json:"cancelled_by_user_id,omitempty" db:"cancelled_by_user_id" gorm:"type:uuid;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	CancelledAt        *time.Time `json:"cancelled_at,omitempty" db:"cancelled_at"`
 	ReminderSent       bool       `json:"reminder_sent" db:"reminder_sent" gorm:"default:false"`
+	BookingCompletedAt *time.Time `json:"booking_completed_at" db:"booking_completed_at"`
 	BookingCreatedAt   time.Time  `json:"booking_created_at" db:"booking_created_at" gorm:"default:CURRENT_TIMESTAMP"`
-	BookingUpdatedAt   time.Time  `json:"booking_updated_at" db:"booking_updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	BookingUpdatedAt   time.Time  `json:"booking_updated_at" db:"booking_updated_at" `
 
 	// Relationships
 	User            entityUsers.User                  `json:"user" gorm:"foreignKey:UserID"`

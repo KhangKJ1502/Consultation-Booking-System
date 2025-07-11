@@ -28,11 +28,20 @@ func (br *BookingRouter) InitBookingRouter(router *gin.RouterGroup) {
 	bookingPrivate := router.Group("/booking/v2")
 	bookingPrivate.Use(middleware.AuthMiddleware(users.User()))
 	{
+		// Existing routes
 		bookingPrivate.POST("/", response.Wrap(bookingCtr.CreateBooking))
 		bookingPrivate.GET("/upcoming", response.Wrap(bookingCtr.GetUpcomingBookingsForExpert))
 		bookingPrivate.POST("/cancel/:bookingID", response.Wrap(bookingCtr.CancelBooking))
 		bookingPrivate.POST("/confirm", response.Wrap(bookingCtr.ConfirmBooking))
 		bookingPrivate.POST("/update-notes", response.Wrap(bookingCtr.UpdateBookingNotes))
 		bookingPrivate.GET("/status-history", response.Wrap(bookingCtr.GetBookingStatusHistory))
+
+		// Missing routes - Added below
+		bookingPrivate.GET("/detail", response.Wrap(bookingCtr.GetBookingByID))
+		bookingPrivate.GET("/history", response.Wrap(bookingCtr.GetUserBookingHistory))
+		bookingPrivate.POST("/reschedule", response.Wrap(bookingCtr.RescheduleBooking))
+		bookingPrivate.POST("/complete", response.Wrap(bookingCtr.CompleteBooking))
+		bookingPrivate.GET("/stats", response.Wrap(bookingCtr.GetBookingStats))
+		bookingPrivate.GET("/search", response.Wrap(bookingCtr.SearchBookings))
 	}
 }

@@ -855,3 +855,408 @@ func (bs *bookingservice) GetBookingStatusHistory(ctx context.Context, req dtobo
 
 	return response, nil
 }
+
+func (bs *bookingservice) GetBookingByID(ctx context.Context, req dtobookings.GetBookingByIDRequest) (*dtobookings.BookingDetailResponse, error) {
+	bookingID, err := uuid.Parse(req.BookingID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid booking ID format: %w", err)
+	}
+
+	var booking entityBooking.ConsultationBooking
+	if err := bs.db.WithContext(ctx).
+		Preload("User").
+		Preload("ExpertProfile").
+		First(&booking, "booking_id = ?", bookingID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("booking not found")
+		}
+		return nil, fmt.Errorf("failed to get booking: %w", err)
+	}
+
+	// Authorization check
+	userUUID, _ := uuid.Parse(req.UserID)
+	if booking.UserID != userUUID && booking.ExpertProfileID != userUUID {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	// Convert to response format
+	response := &dtobookings.BookingDetailResponse{
+		BookingID:        booking.BookingID.String(),
+		UserID:           booking.UserID.String(),
+		ExpertProfileID:  booking.ExpertProfileID.String(),
+		BookingDatetime:  booking.BookingDatetime,
+		DurationMinutes:  booking.DurationMinutes,
+		ConsultationType: booking.ConsultationType,
+		BookingStatus:    booking.BookingStatus,
+		PaymentStatus:    booking.PaymentStatus,
+		UserNotes:        booking.UserNotes,
+		ExpertNotes:      booking.ExpertNotes,
+		MeetingLink:      booking.MeetingLink,
+		MeetingAddress:   booking.MeetingAddress,
+		ConsultationFee:  *booking.ConsultationFee,
+		BookingCreatedAt: booking.BookingCreatedAt,
+		BookingUpdatedAt: booking.BookingUpdatedAt,
+	}
+
+	return response, nil
+}
+
+func (bs *bookingservice) GetUserBookingHistory(ctx context.Context, req dtobookings.GetUserBookingHistoryRequest) (*dtobookings.GetUserBookingHistoryResponse, error) {
+	userID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	var bookings []entityBooking.ConsultationBooking
+	query := bs.db.WithContext(ctx).Where("user_id = ?", userID)
+
+	// Add filters
+	if req.Status != "" {
+		query = query.Where("booking_status = ?", req.Status)
+	}
+	if !req.FromDate.IsZero() {
+		query = query.Where("booking_datetime >= ?", req.FromDate)
+	}
+	if !req.ToDate.IsZero() {
+		query = query.Where("booking_datetime <= ?", req.ToDate)
+	}
+
+	// Pagination
+	offset := (req.Page - 1) * req.PageSize
+	if err := query.Limit(req.PageSize).Offset(offset).Order("booking_datetime DESC").Find(&bookings).Error; err != nil {
+		return nil, fmt.Errorf("failed to get user booking history: %w", err)
+	}
+
+	// Get total count
+	var totalCount int64
+	countQuery := bs.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).Where("user_id = ?", userID)
+	if req.Status != "" {
+		countQuery = countQuery.Where("booking_status = ?", req.Status)
+	}
+	if !req.FromDate.IsZero() {
+		countQuery = countQuery.Where("booking_datetime >= ?", req.FromDate)
+	}
+	if !req.ToDate.IsZero() {
+		countQuery = countQuery.Where("booking_datetime <= ?", req.ToDate)
+	}
+	countQuery.Count(&totalCount)
+
+	// Convert to response format
+	var bookingList []dtobookings.BookingResponse
+	for _, booking := range bookings {
+		bookingList = append(bookingList, dtobookings.BookingResponse{
+			BookingID:        booking.BookingID.String(),
+			ExpertProfileID:  booking.ExpertProfileID.String(),
+			BookingDatetime:  booking.BookingDatetime,
+			DurationMinutes:  booking.DurationMinutes,
+			ConsultationType: booking.ConsultationType,
+			BookingStatus:    booking.BookingStatus,
+			PaymentStatus:    booking.PaymentStatus,
+			ConsultationFee:  booking.ConsultationFee,
+			BookingCreatedAt: booking.BookingCreatedAt,
+		})
+	}
+
+	return &dtobookings.GetUserBookingHistoryResponse{
+		UserID:      req.UserID,
+		Bookings:    bookingList,
+		TotalCount:  int(totalCount),
+		CurrentPage: req.Page,
+		PageSize:    req.PageSize,
+		TotalPages:  int((totalCount + int64(req.PageSize) - 1) / int64(req.PageSize)),
+	}, nil
+}
+
+func (bs *bookingservice) RescheduleBooking(ctx context.Context, req dtobookings.RescheduleBookingRequest) (*dtobookings.RescheduleBookingResponse, error) {
+	bookingID, err := uuid.Parse(req.BookingID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid booking ID format: %w", err)
+	}
+
+	userID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	// Validate new datetime
+	if req.NewBookingDatetime.Before(time.Now()) {
+		return nil, fmt.Errorf("cannot reschedule to past time")
+	}
+
+	// Redis lock for the new slot
+	lockKey := fmt.Sprintf("booking:lock:%s:%s", req.ExpertProfileID, req.NewBookingDatetime.Format(time.RFC3339))
+	lock, err := bs.redisLocker.Obtain(ctx, lockKey, 10*time.Second, &redislock.Options{
+		RetryStrategy: redislock.LimitRetry(redislock.LinearBackoff(100*time.Millisecond), 30),
+	})
+	if err == redislock.ErrNotObtained {
+		return nil, fmt.Errorf("time slot is being processed by another request")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	defer lock.Release(ctx)
+
+	// Start transaction
+	tx := bs.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Get existing booking
+	var booking entityBooking.ConsultationBooking
+	if err := tx.WithContext(ctx).First(&booking, "booking_id = ?", bookingID).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("booking not found")
+	}
+
+	// Authorization check
+	if booking.UserID != userID {
+		tx.Rollback()
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	// Check if booking can be rescheduled
+	if booking.BookingStatus == "completed" || booking.BookingStatus == "cancelled" {
+		tx.Rollback()
+		return nil, fmt.Errorf("cannot reschedule completed or cancelled booking")
+	}
+
+	// Check expert availability for new slot
+	// expertUUID, err := uuid.Parse(req.ExpertProfileID)
+	if err != nil {
+		return nil, fmt.Errorf("expert ID not is avalable")
+	}
+	newEndTime := req.NewBookingDatetime.Add(time.Duration(booking.DurationMinutes) * time.Minute)
+
+	count, err := bs.helper.CheckExpertAvailabilityDB(ctx, req.ExpertProfileID, req.NewBookingDatetime, newEndTime)
+	if err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("failed to check expert availability: %w", err)
+	}
+	if count > 0 {
+		tx.Rollback()
+		return nil, fmt.Errorf("expert is not available for the new time slot")
+	}
+
+	// Update booking
+	oldDatetime := booking.BookingDatetime
+	booking.BookingDatetime = req.NewBookingDatetime
+	booking.BookingStatus = "pending" // Reset to pending for expert confirmation
+	booking.BookingUpdatedAt = time.Now()
+
+	if err := tx.Save(&booking).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("failed to update booking: %w", err)
+	}
+
+	// Record status history
+	statusHistory := entityBooking.BookingStatusHistory{
+		BookingID:       booking.BookingID,
+		OldStatus:       &booking.BookingStatus,
+		NewStatus:       "rescheduled",
+		ChangedByUserID: userID,
+		ChangeReason:    &req.RescheduleReason,
+		StatusChangedAt: time.Now(),
+	}
+	if err := tx.Create(&statusHistory).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("failed to record status history: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Send notifications
+	go func() {
+		message := fmt.Sprintf("Booking %s has been rescheduled from %s to %s",
+			booking.BookingID.String(),
+			oldDatetime.Format("02/01/2006 15:04"),
+			req.NewBookingDatetime.Format("02/01/2006 15:04"))
+		_ = realtime.Send(booking.ExpertProfileID.String(), message)
+	}()
+
+	return &dtobookings.RescheduleBookingResponse{
+		BookingID:          booking.BookingID.String(),
+		OldBookingDatetime: oldDatetime,
+		NewBookingDatetime: req.NewBookingDatetime,
+		BookingStatus:      booking.BookingStatus,
+		RescheduledAt:      time.Now(),
+		Message:            "Booking rescheduled successfully. Waiting for expert confirmation.",
+	}, nil
+}
+
+func (bs *bookingservice) CompleteBooking(ctx context.Context, req dtobookings.CompleteBookingRequest) (*dtobookings.CompleteBookingResponse, error) {
+	bookingID, err := uuid.Parse(req.BookingID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid booking ID format: %w", err)
+	}
+
+	var booking entityBooking.ConsultationBooking
+	if err := bs.db.WithContext(ctx).First(&booking, "booking_id = ?", bookingID).Error; err != nil {
+		return nil, fmt.Errorf("booking not found")
+	}
+
+	// Only expert can mark as completed
+	expertUUID, _ := uuid.Parse(req.ExpertID)
+	if booking.ExpertProfileID != expertUUID {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	// Check booking status
+	if booking.BookingStatus != "confirmed" {
+		return nil, fmt.Errorf("can only complete confirmed bookings")
+	}
+
+	// Update booking status
+	booking.BookingStatus = "completed"
+	completedAt := time.Now()
+	booking.BookingCompletedAt = &completedAt
+	booking.BookingUpdatedAt = completedAt
+
+	if err := bs.db.WithContext(ctx).Save(&booking).Error; err != nil {
+		return nil, fmt.Errorf("failed to complete booking: %w", err)
+	}
+
+	// Send completion notification
+	go func() {
+		message := fmt.Sprintf("Your consultation %s has been completed", booking.BookingID.String())
+		_ = realtime.Send(booking.UserID.String(), message)
+	}()
+
+	return &dtobookings.CompleteBookingResponse{
+		BookingID:   booking.BookingID.String(),
+		Status:      booking.BookingStatus,
+		CompletedAt: completedAt,
+		Message:     "Booking completed successfully",
+	}, nil
+}
+
+func (bs *bookingservice) GetBookingStats(ctx context.Context, req dtobookings.GetBookingStatsRequest) (*dtobookings.GetBookingStatsResponse, error) {
+	userUUID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	var stats dtobookings.BookingStats
+
+	// Get total bookings
+	if err := bs.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).
+		Where("user_id = ? AND booking_datetime >= ? AND booking_datetime <= ?", userUUID, req.FromDate, req.ToDate).
+		Count(&stats.TotalBookings).Error; err != nil {
+		return nil, fmt.Errorf("failed to get total bookings: %w", err)
+	}
+
+	// Get bookings by status
+	var statusCounts []struct {
+		BookingStatus string
+		Count         int64
+	}
+	if err := bs.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).
+		Select("booking_status, COUNT(*) as count").
+		Where("user_id = ? AND booking_datetime >= ? AND booking_datetime <= ?", userUUID, req.FromDate, req.ToDate).
+		Group("booking_status").
+		Scan(&statusCounts).Error; err != nil {
+		return nil, fmt.Errorf("failed to get status counts: %w", err)
+	}
+
+	// Convert to map
+	stats.StatusCounts = make(map[string]int64)
+	for _, sc := range statusCounts {
+		stats.StatusCounts[sc.BookingStatus] = sc.Count
+	}
+
+	// Get total spent
+	var totalSpent float64
+	if err := bs.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{}).
+		Where("user_id = ? AND booking_datetime >= ? AND booking_datetime <= ? AND payment_status = 'paid'", userUUID, req.FromDate, req.ToDate).
+		Select("COALESCE(SUM(consultation_fee), 0)").
+		Scan(&totalSpent).Error; err != nil {
+		return nil, fmt.Errorf("failed to get total spent: %w", err)
+	}
+	stats.TotalSpent = totalSpent
+
+	return &dtobookings.GetBookingStatsResponse{
+		UserID:      req.UserID,
+		FromDate:    req.FromDate,
+		ToDate:      req.ToDate,
+		Stats:       stats,
+		GeneratedAt: time.Now(),
+	}, nil
+}
+
+func (bs *bookingservice) SearchBookings(ctx context.Context, req dtobookings.SearchBookingsRequest) (*dtobookings.SearchBookingsResponse, error) {
+	query := bs.db.WithContext(ctx).Model(&entityBooking.ConsultationBooking{})
+
+	// Apply filters
+	if req.UserID != "" {
+		userUUID, err := uuid.Parse(req.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user ID format: %w", err)
+		}
+		query = query.Where("user_id = ?", userUUID)
+	}
+
+	if req.ExpertProfileID != "" {
+		expertUUID, err := uuid.Parse(req.ExpertProfileID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid expert ID format: %w", err)
+		}
+		query = query.Where("expert_profile_id = ?", expertUUID)
+	}
+
+	if req.Status != "" {
+		query = query.Where("booking_status = ?", req.Status)
+	}
+
+	if req.ConsultationType != "" {
+		query = query.Where("consultation_type = ?", req.ConsultationType)
+	}
+
+	if !req.FromDate.IsZero() {
+		query = query.Where("booking_datetime >= ?", req.FromDate)
+	}
+
+	if !req.ToDate.IsZero() {
+		query = query.Where("booking_datetime <= ?", req.ToDate)
+	}
+
+	// Get total count
+	var totalCount int64
+	if err := query.Count(&totalCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to get total count: %w", err)
+	}
+
+	// Apply pagination and sorting
+	offset := (req.Page - 1) * req.PageSize
+	var bookings []entityBooking.ConsultationBooking
+	if err := query.Limit(req.PageSize).Offset(offset).Order("booking_datetime DESC").Find(&bookings).Error; err != nil {
+		return nil, fmt.Errorf("failed to search bookings: %w", err)
+	}
+
+	// Convert to response format
+	var results []dtobookings.BookingResponse
+	for _, booking := range bookings {
+		results = append(results, dtobookings.BookingResponse{
+			BookingID:        booking.BookingID.String(),
+			ExpertProfileID:  booking.ExpertProfileID.String(),
+			BookingDatetime:  booking.BookingDatetime,
+			DurationMinutes:  booking.DurationMinutes,
+			ConsultationType: booking.ConsultationType,
+			BookingStatus:    booking.BookingStatus,
+			PaymentStatus:    booking.PaymentStatus,
+			ConsultationFee:  booking.ConsultationFee,
+			BookingCreatedAt: booking.BookingCreatedAt,
+		})
+	}
+
+	return &dtobookings.SearchBookingsResponse{
+		Results:     results,
+		TotalCount:  int(totalCount),
+		CurrentPage: req.Page,
+		PageSize:    req.PageSize,
+		TotalPages:  int((totalCount + int64(req.PageSize) - 1) / int64(req.PageSize)),
+	}, nil
+}

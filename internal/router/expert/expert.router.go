@@ -33,21 +33,25 @@ func (er *ExpertRouter) InitExpertRouter(router *gin.RouterGroup) {
 		// Expert Profile Management
 		private.POST("/createExpert", response.Wrap(expertCtrl.CreateExpertProfile))
 		private.PUT("/update", response.Wrap(expertCtrl.UpdateExpertProfile))
+		private.DELETE("/delete/:expertId", response.Wrap(expertCtrl.DeleteExpertProfile))
 
 		// Working Hours Management
 		private.POST("/workHour", response.Wrap(expertCtrl.CreateWorkHour))
 		private.PUT("/workHour", response.Wrap(expertCtrl.UpdateWorkHour))
+		private.DELETE("/workHour/:workingHourId", response.Wrap(expertCtrl.DeleteWorkHour))
 
 		// Unavailable Time Management
 		private.POST("/unavailableTime", response.Wrap(expertCtrl.CreateUnavailableTime))
 		private.PUT("/unavailableTime", response.Wrap(expertCtrl.UpdateUnavailableTime))
+		private.DELETE("/unavailableTime/:unavailableTimeId", response.Wrap(expertCtrl.DeleteUnavailableTime))
 
-		// 🆕 Specialization Management
+		// Specialization Management
 		private.POST("/specialization", response.Wrap(expertCtrl.CreateExpertSpecialization))
 		private.PUT("/specialization", response.Wrap(expertCtrl.UpdateExpertSpecialization))
-
-		//Price Config
+		private.DELETE("/specialization/:specializationId", response.Wrap(expertCtrl.DeleteExpertSpecialization))
+		// Price Config Management
 		private.POST("/price", response.Wrap(expertCtrl.CreatePrice))
 		private.PUT("/price", response.Wrap(expertCtrl.UpdatePrice))
+		private.DELETE("/price/:pricingId", response.Wrap(expertCtrl.DeletePrice))
 	}
 }

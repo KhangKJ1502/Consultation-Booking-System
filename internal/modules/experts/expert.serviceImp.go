@@ -348,6 +348,23 @@ func (es *expertService) GetAllsExpert(ctx context.Context) (*[]dtoexperts.GetAl
 	return &result, nil
 }
 
+func (es *expertService) DeleteExpertProfile(ctx context.Context, expertID string) error {
+	expertUUID, err := uuid.Parse(expertID)
+	if err != nil {
+		return fmt.Errorf("invalid expert ID format: %w", err)
+	}
+
+	// Soft delete or hard delete depending on your business logic
+	if err := es.db.WithContext(ctx).Delete(&entityexpert.ExpertProfile{}, "expert_profile_id = ?", expertUUID).Error; err != nil {
+		return fmt.Errorf("failed to delete expert profile: %w", err)
+	}
+
+	// Clear cache
+	_ = es.cache.DeleteExpertDetail(ctx, expertID)
+
+	return nil
+}
+
 // Working hour
 func (es *expertService) CreateWorkHour(ctx context.Context, req dtoexperts.CreateWorkingHourRequest) (*dtoexperts.CreateWorkingHourResponse, error) {
 	// Parse ExpertProfileID from string to UUID
@@ -418,6 +435,19 @@ func (es *expertService) GetAllWorkHourByExpertID(ctx context.Context, expertID 
 	}
 
 	return workingHours, nil
+}
+
+func (es *expertService) DeleteWorkHour(ctx context.Context, workingHourID string) error {
+	workingHourUUID, err := uuid.Parse(workingHourID)
+	if err != nil {
+		return fmt.Errorf("invalid working hour ID format: %w", err)
+	}
+
+	if err := es.db.WithContext(ctx).Delete(&entityexpert.ExpertWorkingHour{}, "working_hour_id = ?", workingHourUUID).Error; err != nil {
+		return fmt.Errorf("failed to delete working hour: %w", err)
+	}
+
+	return nil
 }
 
 // Unvailable Time
@@ -510,6 +540,19 @@ func (es *expertService) GetAllUnavailableTimeByExpertID(ctx context.Context, ex
 	return result, nil
 }
 
+func (es *expertService) DeleteUnavailableTime(ctx context.Context, unavailableTimeID string) error {
+	unavailableTimeUUID, err := uuid.Parse(unavailableTimeID)
+	if err != nil {
+		return fmt.Errorf("invalid unavailable time ID format: %w", err)
+	}
+
+	if err := es.db.WithContext(ctx).Delete(&entityexpert.ExpertUnavailableTime{}, "unavailable_time_id = ?", unavailableTimeUUID).Error; err != nil {
+		return fmt.Errorf("failed to delete unavailable time: %w", err)
+	}
+
+	return nil
+}
+
 // Expert Specialization
 func (es *expertService) CreateExpertSpecialization(ctx context.Context, req dtoexperts.CreateSpecializationRequest) (*dtoexperts.CreateSpecializationResponse, error) {
 	specialization := entityexpert.ExpertSpecialization{
@@ -588,6 +631,19 @@ func (es *expertService) GetAllExpertSpecializationByExpertID(ctx context.Contex
 	}
 
 	return responses, nil
+}
+
+func (es *expertService) DeleteExpertSpecialization(ctx context.Context, specializationID string) error {
+	specializationUUID, err := uuid.Parse(specializationID)
+	if err != nil {
+		return fmt.Errorf("invalid specialization ID format: %w", err)
+	}
+
+	if err := es.db.WithContext(ctx).Delete(&entityexpert.ExpertSpecialization{}, "specialization_id = ?", specializationUUID).Error; err != nil {
+		return fmt.Errorf("failed to delete specialization: %w", err)
+	}
+
+	return nil
 }
 
 // Pricing
@@ -684,4 +740,17 @@ func (es *expertService) GetAllPriceByExpertID(ctx context.Context, expertID str
 	}
 
 	return res, nil
+}
+
+func (es *expertService) DeletePrice(ctx context.Context, pricingID string) error {
+	pricingUUID, err := uuid.Parse(pricingID)
+	if err != nil {
+		return fmt.Errorf("invalid pricing ID format: %w", err)
+	}
+
+	if err := es.db.WithContext(ctx).Delete(&entityexpert.PricingConfig{}, "pricing_id = ?", pricingUUID).Error; err != nil {
+		return fmt.Errorf("failed to delete pricing config: %w", err)
+	}
+
+	return nil
 }

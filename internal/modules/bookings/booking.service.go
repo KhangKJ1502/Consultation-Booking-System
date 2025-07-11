@@ -33,4 +33,11 @@ type IBookings interface {
 	GetAvailableSlots(ctx context.Context, req dtobookings.GetAvailableSlotsRequest) (*dtobookings.GetAvailableSlotsResponse, error)
 	UpdateBookingNotes(ctx context.Context, req dtobookings.UpdateBookingNotesRequest) (*dtobookings.UpdateBookingNotesResponse, error)
 	GetBookingStatusHistory(ctx context.Context, req dtobookings.GetBookingStatusHistoryRequest) (*dtobookings.GetBookingStatusHistoryResponse, error)
+
+	GetBookingByID(ctx context.Context, req dtobookings.GetBookingByIDRequest) (*dtobookings.BookingDetailResponse, error)
+	GetUserBookingHistory(ctx context.Context, req dtobookings.GetUserBookingHistoryRequest) (*dtobookings.GetUserBookingHistoryResponse, error)
+	RescheduleBooking(ctx context.Context, req dtobookings.RescheduleBookingRequest) (*dtobookings.RescheduleBookingResponse, error)
+	CompleteBooking(ctx context.Context, req dtobookings.CompleteBookingRequest) (*dtobookings.CompleteBookingResponse, error)
+	GetBookingStats(ctx context.Context, req dtobookings.GetBookingStatsRequest) (*dtobookings.GetBookingStatsResponse, error)
+	SearchBookings(ctx context.Context, req dtobookings.SearchBookingsRequest) (*dtobookings.SearchBookingsResponse, error)
 }

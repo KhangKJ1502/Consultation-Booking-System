@@ -126,3 +126,99 @@ func (bc *BookingController) GetBookingStatusHistory(c *gin.Context) (res interf
 	}
 	return resp, nil
 }
+
+func (bc *BookingController) GetBookingByID(c *gin.Context) (res interface{}, err error) {
+	var req dtobookings.GetBookingByIDRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		bc.Logger.Error("Invalid get booking by ID request", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get booking by ID request", err)
+	}
+
+	resp, err := Booking().GetBookingByID(context.Background(), req)
+	if err != nil {
+		bc.Logger.Error("Get booking by ID failed", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Get booking by ID failed", err)
+	}
+
+	return resp, nil
+}
+
+func (bc *BookingController) GetUserBookingHistory(c *gin.Context) (res interface{}, err error) {
+	var req dtobookings.GetUserBookingHistoryRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		bc.Logger.Error("Invalid get user booking history request", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get user booking history request", err)
+	}
+
+	resp, err := Booking().GetUserBookingHistory(context.Background(), req)
+	if err != nil {
+		bc.Logger.Error("Get user booking history failed", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Get user booking history failed", err)
+	}
+
+	return resp, nil
+}
+
+func (bc *BookingController) RescheduleBooking(c *gin.Context) (res interface{}, err error) {
+	var req dtobookings.RescheduleBookingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		bc.Logger.Error("Invalid reschedule booking request", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid reschedule booking request", err)
+	}
+
+	resp, err := Booking().RescheduleBooking(context.Background(), req)
+	if err != nil {
+		bc.Logger.Error("Reschedule booking failed", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Reschedule booking failed", err)
+	}
+
+	return resp, nil
+}
+
+func (bc *BookingController) CompleteBooking(c *gin.Context) (res interface{}, err error) {
+	var req dtobookings.CompleteBookingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		bc.Logger.Error("Invalid complete booking request", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid complete booking request", err)
+	}
+
+	resp, err := Booking().CompleteBooking(context.Background(), req)
+	if err != nil {
+		bc.Logger.Error("Complete booking failed", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Complete booking failed", err)
+	}
+
+	return resp, nil
+}
+
+func (bc *BookingController) GetBookingStats(c *gin.Context) (res interface{}, err error) {
+	var req dtobookings.GetBookingStatsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		bc.Logger.Error("Invalid get booking stats request", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get booking stats request", err)
+	}
+
+	resp, err := Booking().GetBookingStats(context.Background(), req)
+	if err != nil {
+		bc.Logger.Error("Get booking stats failed", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Get booking stats failed", err)
+	}
+
+	return resp, nil
+}
+
+func (bc *BookingController) SearchBookings(c *gin.Context) (res interface{}, err error) {
+	var req dtobookings.SearchBookingsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		bc.Logger.Error("Invalid search bookings request", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid search bookings request", err)
+	}
+
+	resp, err := Booking().SearchBookings(context.Background(), req)
+	if err != nil {
+		bc.Logger.Error("Search bookings failed", zap.Error(err))
+		return nil, response.NewAPIError(http.StatusInternalServerError, "Search bookings failed", err)
+	}
+
+	return resp, nil
+}

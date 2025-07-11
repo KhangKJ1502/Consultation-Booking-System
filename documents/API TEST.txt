@@ -91,28 +91,60 @@ DELETE http://localhost:8899/user/v2/tokens/{tokenID}
 +=+========================================+++++++
                      EXPERT 
 +================================================+
-Create Expert: http://localhost:8899/expert/v2/createExpert
-Update Expert: http://localhost:8899/expert/v2/update
-GetAll Expert: http://localhost:8899/expert/v1/getAllExpert 
-Get Expert Detail: http://localhost:8899/expert/v1/getDetail/d3549e2f-9571-44d1-b0f2-282db2143dd4 
+Expert API Endpoints
+Expert Profile
 
-Unvailable Time:
-Create Unvalable Time: http://localhost:8899/expert/v2/unavailableTime
-Update Unvalable Time: http://localhost:8899/expert/v2/unavailableTime
-Get Unvailable Time: http://localhost:8899/expert/v1/unavailableTime/:expertId
+Create Expert: POST http://localhost:8899/expert/v2/createExpert
+Update Expert: PUT http://localhost:8899/expert/v2/update
+Get All Expert: GET http://localhost:8899/expert/v1/getAllExpert
+Get Expert Detail: GET http://localhost:8899/expert/v1/getDetail/:id
 
-Working Hour:
-Create Working Hour: http://localhost:8899/expert/v2/
-Update Working Hour: http://localhost:8899/expert/v2/unavailableTime
-Get Working Hour: http://localhost:8899/expert/v1/unavailableTime/:expertId 
+Working Hour
+
+Create Working Hour: POST http://localhost:8899/expert/v2/workHour
+Update Working Hour: PUT http://localhost:8899/expert/v2/workHour
+Get Working Hour: GET http://localhost:8899/expert/v1/workHour/:expertId
+Delete Working Hour: DELETE http://localhost:8899/expert/v2/workHour/:workingHourId
+
+Unavailable Time
+
+Create Unavailable Time: POST http://localhost:8899/expert/v2/unavailableTime
+Update Unavailable Time: PUT http://localhost:8899/expert/v2/unavailableTime
+Get Unavailable Time: GET http://localhost:8899/expert/v1/unavailableTime/:expertId
+Delete Unavailable Time: DELETE http://localhost:8899/expert/v2/unavailableTime/:unavailableTimeId
+
+Specialization
+
+Create Specialization: POST http://localhost:8899/expert/v2/specialization
+Update Specialization: PUT http://localhost:8899/expert/v2/specialization
+Get Specialization: GET http://localhost:8899/expert/v1/specialization/:expertId
+Delete Specialization: DELETE http://localhost:8899/expert/v2/specialization/:specializationId
+
+Price
+
+Create Price: POST http://localhost:8899/expert/v2/price
+Update Price: PUT http://localhost:8899/expert/v2/price
+Get Price: GET http://localhost:8899/expert/v1/price/:expertId
+Delete Price: DELETE http://localhost:8899/expert/v2/price/:pricingId
 
 +==================================================+
                       BOOKING
 +==================================================+
-Create Booking: http://localhost:8899/booking/v2/ *
-Update Booking Notes : http://localhost:8899/booking/v2/update-notes
-Cancel Booking: http://localhost:8899/booking/v2/cancel/:bookingID *
-Confirm Booking: http://localhost:8899/booking/v2/confirm *
-Get Available Slot : http://localhost:8899/booking/v1/available-slots 
-Get History Status: http://localhost:8899/booking/v2/status-history
- 
+BOOKING API ENDPOINTS
+Public APIs (v1) - No Authentication Required
+GET http://localhost:8899/booking/v1/available-slots
+Private APIs (v2) - Authentication Required
+Basic Operations
+Create Booking: POST http://localhost:8899/booking/v2/
+Update Booking Notes: POST http://localhost:8899/booking/v2/update-notes 
+Cancel Booking: POST http://localhost:8899/booking/v2/cancel/:bookingID 
+Confirm Booking: POST http://localhost:8899/booking/v2/confirm
+Reschedule Booking: POST http://localhost:8899/booking/v2/reschedule
+Complete Booking: POST http://localhost:8899/booking/v2/complete
+Query Operations
+Get Upcoming Bookings For Expert: GET http://localhost:8899/booking/v2/upcoming  *Hàm này sẽ được xuất hiện ở Worker
+Get Booking Status History: GET http://localhost:8899/booking/v2/status-history
+Get Booking By ID: GET http://localhost:8899/booking/v2/detail
+Get User Booking History: GET http://localhost:8899/booking/v2/history
+Get Booking Stats: GET http://localhost:8899/booking/v2/stats
+Search Bookings: GET http://localhost:8899/booking/v2/search

@@ -99,7 +99,6 @@ func (rs *ReminderService) SendBookingReminders() error {
 // getUpcomingBookings retrieves bookings that need reminders
 func (rs *ReminderService) getUpcomingBookings() ([]BookingData, error) {
 	var bookings []BookingData
-
 	query := `
 		SELECT 
 			cb.booking_id,

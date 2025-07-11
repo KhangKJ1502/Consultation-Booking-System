@@ -22,6 +22,8 @@ func (ec *ExpertController) GetAllExpert(ctx *gin.Context) (res interface{}, err
 	return req, nil
 }
 
+//Expert
+
 func (ec *ExpertController) CreateExpertProfile(ctx *gin.Context) (res interface{}, err error) {
 	var req dtoexperts.CreateProfileExpertRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -54,6 +56,18 @@ func (ec *ExpertController) GetExpertProfileDetails(ctx *gin.Context) (res inter
 		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid response load detail", err.Error())
 	}
 	return resExpertDetail, nil
+}
+func (ec *ExpertController) DeleteExpertProfile(ctx *gin.Context) (res interface{}, err error) {
+	expertID := ctx.Param("expertId")
+	if expertID == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Expert ID is required", "Expert ID parameter is missing")
+	}
+
+	err = Expert().DeleteExpertProfile(ctx, expertID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "delete expert profile failed", err.Error())
+	}
+	return map[string]string{"message": "Expert profile deleted successfully"}, nil
 }
 
 // Working Hour Controllers
@@ -94,6 +108,19 @@ func (ec *ExpertController) GetAllWorkHourByExpertID(ctx *gin.Context) (res inte
 	return resWorkHours, nil
 }
 
+func (ec *ExpertController) DeleteWorkHour(ctx *gin.Context) (res interface{}, err error) {
+	workingHourID := ctx.Param("workingHourId")
+	if workingHourID == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Working Hour ID is required", "Working Hour ID parameter is missing")
+	}
+
+	err = Expert().DeleteWorkHour(ctx, workingHourID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "delete work hour failed", err.Error())
+	}
+	return map[string]string{"message": "Work hour deleted successfully"}, nil
+}
+
 // Unavailable Time Controllers
 func (ec *ExpertController) CreateUnavailableTime(ctx *gin.Context) (res interface{}, err error) {
 	var req dtoexperts.CreateUnavailableTimeRequest
@@ -130,6 +157,18 @@ func (ec *ExpertController) GetAllUnavailableTimeByExpertID(ctx *gin.Context) (r
 		return nil, response.NewAPIError(http.StatusBadRequest, "Failed to get unavailable times", err.Error())
 	}
 	return resUnavailableTimes, nil
+}
+func (ec *ExpertController) DeleteUnavailableTime(ctx *gin.Context) (res interface{}, err error) {
+	unavailableTimeID := ctx.Param("unavailableTimeId")
+	if unavailableTimeID == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Unavailable Time ID is required", "Unavailable Time ID parameter is missing")
+	}
+
+	err = Expert().DeleteUnavailableTime(ctx, unavailableTimeID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "delete unavailable time failed", err.Error())
+	}
+	return map[string]string{"message": "Unavailable time deleted successfully"}, nil
 }
 
 // -------------------- Specialization Controllers --------------------
@@ -173,6 +212,19 @@ func (ec *ExpertController) GetAllExpertSpecializationByExpertID(ctx *gin.Contex
 	return specs, nil
 }
 
+func (ec *ExpertController) DeleteExpertSpecialization(ctx *gin.Context) (res interface{}, err error) {
+	specializationID := ctx.Param("specializationId")
+	if specializationID == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Specialization ID is required", "Specialization ID parameter is missing")
+	}
+
+	err = Expert().DeleteExpertSpecialization(ctx, specializationID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "delete specialization failed", err.Error())
+	}
+	return map[string]string{"message": "Specialization deleted successfully"}, nil
+}
+
 // -----------Pricing Config Controller
 func (ec *ExpertController) CreatePrice(ctx *gin.Context) (res interface{}, err error) {
 	var req dtoexperts.CreatePricingConfigRequest
@@ -209,4 +261,16 @@ func (ec *ExpertController) GetAllPriceByExpertID(ctx *gin.Context) (res interfa
 		return nil, response.NewAPIError(http.StatusBadRequest, "failed to get pricing config list", err.Error())
 	}
 	return pricingList, nil
+}
+func (ec *ExpertController) DeletePrice(ctx *gin.Context) (res interface{}, err error) {
+	pricingID := ctx.Param("pricingId")
+	if pricingID == "" {
+		return nil, response.NewAPIError(http.StatusBadRequest, "Pricing ID is required", "Pricing ID parameter is missing")
+	}
+
+	err = Expert().DeletePrice(ctx, pricingID)
+	if err != nil {
+		return nil, response.NewAPIError(http.StatusBadRequest, "delete pricing config failed", err.Error())
+	}
+	return map[string]string{"message": "Pricing config deleted successfully"}, nil
 }

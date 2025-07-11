@@ -49,4 +49,10 @@ type IExperts interface {
 	CreatePrice(ctx context.Context, req dtoexperts.CreatePricingConfigRequest) (*dtoexperts.CreatePricingConfigResponse, error)
 	UpdatePrice(ctx context.Context, req dtoexperts.UpdatePricingConfigRequest) (*dtoexperts.UpdatePricingConfigResponse, error)
 	GetAllPriceByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.PricingConfigResponse, error)
+
+	DeleteExpertProfile(ctx context.Context, expertID string) error
+	DeleteWorkHour(ctx context.Context, workingHourID string) error
+	DeleteUnavailableTime(ctx context.Context, unavailableTimeID string) error
+	DeleteExpertSpecialization(ctx context.Context, specializationID string) error
+	DeletePrice(ctx context.Context, pricingID string) error
 }
