@@ -6,9 +6,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// type UserProfileRequest struct {
-// 	UserID uuid.UUID `json:"user_id" binding:"required"`
-// }
+type UserProfileRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+}
 
 type UserProfileResponse struct {
 	UserID         uuid.UUID `json:"user_id"`

@@ -126,25 +126,679 @@ Create Price: POST http://localhost:8899/expert/v2/price
 Update Price: PUT http://localhost:8899/expert/v2/price
 Get Price: GET http://localhost:8899/expert/v1/price/:expertId
 Delete Price: DELETE http://localhost:8899/expert/v2/price/:pricingId
+# API Test Documentation
 
-+==================================================+
-                      BOOKING
-+==================================================+
-BOOKING API ENDPOINTS
-Public APIs (v1) - No Authentication Required
-Get available slot: GET http://localhost:8899/booking/v1/available-slots 
-Private APIs (v2) - Authentication Required
-Basic Operations
-Create Booking: POST http://localhost:8899/booking/v2/
-Update Booking Notes: POST http://localhost:8899/booking/v2/update-notes 
-Cancel Booking: POST http://localhost:8899/booking/v2/cancel/:bookingID 
-Confirm Booking: POST http://localhost:8899/booking/v2/confirm
-Reschedule Booking: POST http://localhost:8899/booking/v2/reschedule
-Complete Booking: POST http://localhost:8899/booking/v2/complete
-Query Operations
-Get Upcoming Bookings For Expert: GET http://localhost:8899/booking/v2/upcoming  *Hàm này sẽ được xuất hiện ở Worker
-Get Booking Status History: GET http://localhost:8899/booking/v2/status-history
-Get Booking By ID: GET http://localhost:8899/booking/v2/detail
-Get User Booking History: GET http://localhost:8899/booking/v2/history
-Get Booking Stats: GET http://localhost:8899/booking/v2/stats
-Search Bookings: GET http://localhost:8899/booking/v2/search
+## 🔧 Base Configuration
+- **Base URL**: `http://localhost:8899`
+- **Expert Service URL**: `http://localhost:8080/api/v1`
+- **Content-Type**: `application/json`
+
+
+## 📋 Table of Contents
+1. [User Management APIs](#user-management-apis)
+2. [Booking APIs](#booking-apis)
+3. [Expert Service APIs](#expert-service-apis)
+
+---
+
+## 👤 User Management APIs
+
+### 🔓 Public APIs (No Authentication Required)
+
+#### 1. User Registration
+
+curl -X POST http://localhost:8899/user/v1/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_email": "truongvankhang1502@gmail.com",
+    "password": "Password123!",
+    "full_name": "Truong Van Khang"
+  }'
+
+
+#### 2. User Login
+
+curl -X POST http://localhost:8899/user/v1/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_email": "truongvankhang1502@gmail.com",
+    "password": "Password123!"
+  }'
+
+
+#### 3. Refresh Token
+
+curl -X POST http://localhost:8899/user/v1/refresh-token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "YOUR_REFRESH_TOKEN_HERE"
+  }'
+
+
+#### 4. Reset Password Request
+
+curl -X POST http://localhost:8899/user/v1/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "truongvankhang1502@gmail.com"
+  }'
+
+
+#### 5. Confirm Reset Password
+
+curl -X POST http://localhost:8899/user/v1/confirm-reset \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "RESET_TOKEN_HERE",
+    "new_password": "NewPassword123!"
+  }'
+
+
+### 🔐 Private APIs (JWT Authentication Required)
+
+#### 6. Get User Information
+
+curl -X GET http://localhost:8899/user/v2/GetInfor \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+
+#### 7. Update User Information
+
+curl -X PUT http://localhost:8899/user/v2/update \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "full_name": "Truong Van Khang Updated"
+  }'
+
+
+#### 8. Update Email
+
+curl -X PUT http://localhost:8899/user/v2/email \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "new_email": "truongvankhang.new@gmail.com",
+    "password": "Password123!"
+  }'
+
+
+#### 9. Change Password
+
+curl -X PUT http://localhost:8899/user/v2/change-password \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "old_password": "Password123!",
+    "new_password": "NewPassword123!"
+  }'
+
+
+#### 10. Logout
+
+curl -X POST http://localhost:8899/user/v2/logout \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+
+#### 11. Logout All Sessions
+
+curl -X POST http://localhost:8899/user/v2/logout-all \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+
+#### 12. Get Active Tokens
+
+curl -X GET http://localhost:8899/user/v2/tokens \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+#### 13. Revoke Token
+
+curl -X DELETE http://localhost:8899/user/v2/tokens/TOKEN_ID_HERE \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+#### 14. Delete Account
+
+curl -X DELETE http://localhost:8899/user/v2/account \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "password": "Password123!"
+  }'
+
+### 👑 Admin APIs (JWT + Admin Role Required)
+
+#### 15. Get Users by Role
+
+curl -X GET "http://localhost:8899/user/v3/users?role=user&page=1&limit=10" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+#### 16. Search Users
+
+curl -X POST http://localhost:8899/user/v3/users/search \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "khang"
+  }'
+
+#### 17. Update User Role
+
+curl -X PUT http://localhost:8899/user/v3/users/USER_ID_HERE/role \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role": "admin"
+  }'
+
+
+#### 18. Deactivate User
+
+curl -X PUT http://localhost:8899/user/v3/users/USER_ID_HERE/deactivate \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+
+#### 19. Activate User
+
+curl -X PUT http://localhost:8899/user/v3/users/USER_ID_HERE/activate \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
+
+
+---
+
+## 📅 Booking APIs
+
+### 🔓 Public APIs (v1)
+
+#### Get Available Slots
+
+curl -X GET http://localhost:8899/booking/v1/available-slots \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "456e7890-e89b-12d3-a456-426614174001",
+    "from_date": "2024-07-15T00:00:00Z",
+    "to_date": "2024-07-20T23:59:59Z",
+    "slot_duration_minutes": 60
+  }'
+
+
+### 🔐 Private APIs (v2) - Authentication Required
+
+#### 1. Create Booking
+
+curl -X POST http://localhost:8899/booking/v2/ \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123e4567-e89b-12d3-a456-426614174000",
+    "expert_profile_id": "456e7890-e89b-12d3-a456-426614174001",
+    "booking_datetime": "2024-07-15T10:00:00Z",
+    "duration_minutes": 60,
+    "consultation_type": "video_call",
+    "user_notes": "I need help with anxiety management",
+    "consultation_fee": 150.00
+  }'
+
+
+#### 2. Confirm Booking
+
+curl -X POST http://localhost:8899/booking/v2/confirm \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "789e1234-e89b-12d3-a456-426614174002",
+    "expert_id": "456e7890-e89b-12d3-a456-426614174001"
+  }'
+
+
+#### 3. Cancel Booking
+
+curl -X POST http://localhost:8899/booking/v2/cancel/789e1234-e89b-12d3-a456-426614174002 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+
+
+#### 4. Update Booking Notes
+
+curl -X POST http://localhost:8899/booking/v2/update-notes \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "789e1234-e89b-12d3-a456-426614174002",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000",
+    "notes": "Updated notes: Please call me 5 minutes before the appointment"
+  }'
+
+
+#### 5. Reschedule Booking
+
+curl -X POST http://localhost:8899/booking/v2/reschedule \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "789e1234-e89b-12d3-a456-426614174002",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000",
+    "expert_profile_id": "456e7890-e89b-12d3-a456-426614174001",
+    "new_booking_datetime": "2024-07-16T14:00:00Z",
+    "reschedule_reason": "Emergency came up, need to reschedule"
+  }'
+
+
+#### 6. Complete Booking
+
+curl -X POST http://localhost:8899/booking/v2/complete \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "789e1234-e89b-12d3-a456-426614174002",
+    "expert_id": "456e7890-e89b-12d3-a456-426614174001"
+  }'
+
+
+#### 7. Get Upcoming Bookings for Expert
+
+curl -X GET http://localhost:8899/booking/v2/upcoming \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_id": "456e7890-e89b-12d3-a456-426614174001",
+    "from": "2024-07-12T00:00:00Z",
+    "to": "2024-07-19T23:59:59Z"
+  }'
+
+
+#### 8. Get Booking Status History
+
+curl -X GET http://localhost:8899/booking/v2/status-history \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "789e1234-e89b-12d3-a456-426614174002",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+
+
+#### 9. Get Booking by ID
+
+curl -X GET http://localhost:8899/booking/v2/detail \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "booking_id": "789e1234-e89b-12d3-a456-426614174002",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+
+
+#### 10. Get User Booking History
+
+curl -X GET http://localhost:8899/booking/v2/history \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "completed",
+    "from_date": "2024-01-01T00:00:00Z",
+    "to_date": "2024-12-31T23:59:59Z",
+    "page": 1,
+    "page_size": 10
+  }'
+
+
+#### 11. Get Booking Stats
+
+curl -X GET http://localhost:8899/booking/v2/stats \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123e4567-e89b-12d3-a456-426614174000",
+    "from_date": "2024-01-01T00:00:00Z",
+    "to_date": "2024-12-31T23:59:59Z"
+  }'
+
+
+#### 12. Search Bookings
+
+curl -X GET http://localhost:8899/booking/v2/search \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123e4567-e89b-12d3-a456-426614174000",
+    "expert_profile_id": "456e7890-e89b-12d3-a456-426614174001",
+    "status": "confirmed",
+    "consultation_type": "video_call",
+    "from_date": "2024-07-01T00:00:00Z",
+    "to_date": "2024-07-31T23:59:59Z",
+    "page": 1,
+    "page_size": 20
+  }'
+
+
+---
+
+## 👨‍⚕️ Expert Service APIs
+
+### 🔧 Variables
+
+BASE_URL = http://localhost:8080/api/v1
+EXPERT_ID = {{expert_profile_id}}
+USER_ID = 550e8400-e29b-41d4-a716-446655440000
+ACCESS_TOKEN = your_access_token_here
+
+
+### 👤 Expert Profile Management
+
+#### 1. Create Expert Profile
+
+curl -X POST http://localhost:8080/api/v1/experts/profile \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "specialization_list": "Cardiology, Internal Medicine",
+    "experience_years": 10,
+    "expert_bio": "Experienced cardiologist with 10+ years in clinical practice. Specialized in heart disease prevention and treatment.",
+    "consultation_fee": 150.00,
+    "license_number": "MD123456789",
+    "available_online": true,
+    "available_offline": true
+  }'
+
+
+#### 2. Get Expert Profile Details
+
+curl -X GET http://localhost:8080/api/v1/experts/EXPERT_ID \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+#### 3. Update Expert Profile
+
+curl -X PUT http://localhost:8080/api/v1/experts/profile \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "specialization_list": "Cardiology, Internal Medicine, Preventive Medicine",
+    "experience_years": 12,
+    "expert_bio": "Highly experienced cardiologist with 12+ years in clinical practice. Specialized in heart disease prevention, treatment, and preventive medicine.",
+    "consultation_fee": 175.00,
+    "license_number": "MD123456789",
+    "available_online": true,
+    "available_offline": true
+  }'
+
+
+#### 4. Get All Experts
+
+curl -X GET http://localhost:8080/api/v1/experts \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+#### 5. Delete Expert Profile
+
+curl -X DELETE http://localhost:8080/api/v1/experts/EXPERT_ID \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+### ⏰ Working Hours Management
+
+#### 1. Create Working Hour
+
+curl -X POST http://localhost:8080/api/v1/experts/working-hours \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "day_of_week": 1,
+    "start_time": "09:00",
+    "end_time": "17:00"
+  }'
+
+
+#### 2. Update Working Hour
+
+curl -X PUT http://localhost:8080/api/v1/experts/working-hours \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "working_hour_id": "working_hour_id_here",
+    "day_of_week": 1,
+    "start_time": "08:00",
+    "end_time": "18:00"
+  }'
+
+
+#### 3. Get Working Hours by Expert ID
+
+curl -X GET http://localhost:8080/api/v1/experts/EXPERT_ID/working-hours \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+#### 4. Delete Working Hour
+
+curl -X DELETE http://localhost:8080/api/v1/experts/working-hours/working_hour_id_here \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+### 🚫 Unavailable Times Management
+
+#### 1. Create Unavailable Time (Single Day)
+
+curl -X POST http://localhost:8080/api/v1/experts/unavailable-times \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "start_datetime": "2024-12-25T00:00:00Z",
+    "end_datetime": "2024-12-25T23:59:59Z",
+    "reason": "Holiday - Christmas Day",
+    "is_recurring": false,
+    "recurrence_pattern": null
+  }'
+
+
+#### 2. Create Unavailable Time (Recurring)
+
+curl -X POST http://localhost:8080/api/v1/experts/unavailable-times \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "start_datetime": "2024-07-15T12:00:00Z",
+    "end_datetime": "2024-07-15T13:00:00Z",
+    "reason": "Lunch break",
+    "is_recurring": true,
+    "recurrence_pattern": {
+      "type": "daily",
+      "interval": 1,
+      "days_of_week": [1, 2, 3, 4, 5]
+    }
+  }'
+
+
+#### 3. Create Unavailable Time (Vacation)
+
+curl -X POST http://localhost:8080/api/v1/experts/unavailable-times \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "start_datetime": "2024-08-01T00:00:00Z",
+    "end_datetime": "2024-08-15T23:59:59Z",
+    "reason": "Summer vacation",
+    "is_recurring": false,
+    "recurrence_pattern": null
+  }'
+
+
+#### 4. Update Unavailable Time
+
+curl -X PUT http://localhost:8080/api/v1/experts/unavailable-times \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "unavailable_time_id": "unavailable_time_id_here",
+    "start_datetime": "2024-12-25T00:00:00Z",
+    "end_datetime": "2024-12-26T23:59:59Z",
+    "reason": "Holiday - Christmas Extended",
+    "is_recurring": false,
+    "recurrence_pattern": null
+  }'
+
+
+#### 5. Get Unavailable Times by Expert ID
+
+curl -X GET http://localhost:8080/api/v1/experts/EXPERT_ID/unavailable-times \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+#### 6. Delete Unavailable Time
+
+curl -X DELETE http://localhost:8080/api/v1/experts/unavailable-times/unavailable_time_id_here \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+### 🎯 Expert Specialization Management
+
+#### 1. Create Expert Specialization
+
+curl -X POST http://localhost:8080/api/v1/experts/specializations \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "specialization_name": "Interventional Cardiology",
+    "specialization_description": "Specialized in catheter-based treatment of structural heart diseases",
+    "is_primary": true
+  }'
+
+
+#### 2. Create Secondary Specialization
+
+curl -X POST http://localhost:8080/api/v1/experts/specializations \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "specialization_name": "Echocardiography",
+    "specialization_description": "Expert in cardiac ultrasound and heart imaging",
+    "is_primary": false
+  }'
+
+
+#### 3. Update Expert Specialization
+
+curl -X PUT http://localhost:8080/api/v1/experts/specializations \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "specialization_id": "specialization_id_here",
+    "specialization_name": "Advanced Interventional Cardiology",
+    "specialization_description": "Highly specialized in complex catheter-based procedures for structural heart diseases",
+    "is_primary": true
+  }'
+
+
+#### 4. Get Specializations by Expert ID
+
+curl -X GET http://localhost:8080/api/v1/experts/EXPERT_ID/specializations \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+#### 5. Delete Expert Specialization
+
+curl -X DELETE http://localhost:8080/api/v1/experts/specializations/specialization_id_here \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+### 💰 Pricing Configuration Management
+
+#### 1. Create Pricing Config (Online Consultation)
+
+curl -X POST http://localhost:8080/api/v1/experts/pricing \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "service_type": "consultation",
+    "consultation_type": "online",
+    "duration_minutes": 30,
+    "base_price": 100.00,
+    "discount_percentage": 0,
+    "valid_from": "2024-07-01T00:00:00Z",
+    "valid_until": "2024-12-31T23:59:59Z"
+  }'
+
+
+#### 2. Create Pricing Config (Offline Consultation)
+
+curl -X POST http://localhost:8080/api/v1/experts/pricing \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "service_type": "consultation",
+    "consultation_type": "offline",
+    "duration_minutes": 45,
+    "base_price": 150.00,
+    "discount_percentage": 10,
+    "valid_from": "2024-07-01T00:00:00Z",
+    "valid_until": "2024-12-31T23:59:59Z"
+  }'
+
+#### 3. Create Pricing Config (Follow-up)
+
+curl -X POST http://localhost:8080/api/v1/experts/pricing \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expert_profile_id": "EXPERT_ID",
+    "service_type": "follow-up",
+    "consultation_type": "online",
+    "duration_minutes": 15,
+    "base_price": 50.00,
+    "discount_percentage": 0,
+    "valid_from": "2024-07-01T00:00:00Z",
+    "valid_until": "2024-12-31T23:59:59Z"
+  }'
+
+#### 4. Update Pricing Config
+
+curl -X PUT http://localhost:8080/api/v1/experts/pricing \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pricing_id": "pricing_id_here",
+    "service_type": "consultation",
+    "consultation_type": "online",
+    "duration_minutes": 30,
+    "base_price": 120.00,
+    "discount_percentage": 5,
+    "valid_from": "2024-07-01T00:00:00Z",
+    "valid_until": "2024-12-31T23:59:59Z",
+    "is_active": true
+  }'
+
+
+#### 5. Get Pricing Configs by Expert ID
+
+curl -X GET http://localhost:8080/api/v1/experts/EXPERT_ID/pricing \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+#### 6. Delete Pricing Config
+
+curl -X DELETE http://localhost:8080/api/v1/experts/pricing/pricing_id_here \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+
+---
+
+## 📝 Notes
+- Thay thế `YOUR_JWT_TOKEN_HERE` bằng JWT token thực tế
+- Thay thế `YOUR_ACCESS_TOKEN` bằng access token thực tế
+- Thay thế `EXPERT_ID` bằng ID của expert thực tế
+- Thay thế các ID khác (USER_ID, booking_id, etc.) bằng giá trị thực tế
+- Đảm bảo server đang chạy trên các port tương ứng (8899, 8080)
+- Kiểm tra định dạng datetime theo ISO 8601 (YYYY-MM-DDTHH:mm:ssZ)

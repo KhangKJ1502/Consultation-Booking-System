@@ -1,48 +1,150 @@
-POST http://localhost:8899/register
-Body (raw JSON):
-{
-  "user_email": "user1@example.com",
-  "password": "Password123!",
-  "full_name": "Test User"
-} 
-POST http://localhost:8899/user/v1/login
-Body (raw JSON):
-{
-  "user_email": "user1@example.com",
-  "password": "Password123!"
-}
+API Documentation - Hệ thống Booking Expert
+Mục lục
 
-POST http://localhost:8899/expert/v2/createExpert
-Headers:
-Authorization: Bearer {access_token}
+Lệnh hệ thống cơ bản
+HTTP Methods và Status Codes
+User API
+Expert API
+Booking API
+Test Examples
 
-Body:
-{
-  "user_id": "{user_uuid_after_register}",
-  "bio": "Business coach with 5 years of experience",
-  "fields": ["startup", "marketing"],
-  "price_per_session": 500000
-} 
-POST http://localhost:8899/expert/v2/
-Headers:
-Authorization: Bearer {access_token}
 
-Body:
-{
-  "expert_id": "d3549e2f-9571-44d1-b0f2-282db2143dd4",
-  "weekday": 1,
-  "start_time": "09:00",
-  "end_time": "17:00"
-}
+Lệnh hệ thống cơ bản
+Kiểm tra port và process
+bash# Kiểm tra cổng nào đang chạy
+netstat -aon | findstr :5432
 
-POST http://localhost:8899/expert/v2/
-Headers:
-Authorization: Bearer {access_token}
+# Tìm tên tiến trình nào đang chạy
+tasklist | findstr 13240
 
-Body:
-{
-  "expert_id": "feceae68-3a54-4cd7-9c6f-1aba455588bd",
-  "weekday": 1,
-  "start_time": "09:00",
-  "end_time": "17:00"
-}
+# Tắt task
+taskkill /PID 6688 /F
+
+HTTP Methods và Status Codes
+HTTP Methods
+
+CREATE: Method - POST
+UPDATE: Method - PUT
+READ: Method - GET
+DELETE: Method - DELETE
+
+HTTP Status Codes
+
+200 OK: Cancel thành công
+400 Bad Request: Validation error, không thể cancel
+401 Unauthorized: Không có quyền cancel
+404 Not Found: Booking không tồn tại
+409 Conflict: Booking đã bị cancel hoặc không thể cancel
+
+
+User API
+Base URL
+http://localhost:8899
+System API
+
+Ping: GET /ping/100
+
+Public APIs (Không cần authentication)
+Authentication
+
+Register: POST /user/v1/register
+Login: POST /user/v1/login
+Refresh Token: POST /user/v1/refresh-token
+Reset Password: POST /user/v1/reset-password
+Confirm Reset Password: POST /user/v1/confirm-reset
+
+Private APIs (Cần JWT Authentication)
+User Profile Management
+
+Get User Info: GET /user/v2/GetInfor
+Update User Info: PUT /user/v2/update
+Update Email: PUT /user/v2/email
+
+Authentication Management
+
+Logout: POST /user/v2/logout
+Logout All Sessions: POST /user/v2/logout-all
+Change Password: PUT /user/v2/change-password
+Delete Account: DELETE /user/v2/account
+
+Token Management
+
+Get Active Tokens: GET /user/v2/tokens
+Revoke Token: DELETE /user/v2/tokens/{tokenID}
+
+Admin APIs (Cần JWT + Admin Role)
+User Management
+
+Get Users By Role: GET /user/v3/users?role={role}&page={page}&limit={limit}
+Search Users: POST /user/v3/users/search
+Update User Role: PUT /user/v3/users/{userID}/role
+Deactivate User: PUT /user/v3/users/{userID}/deactivate
+Activate User: PUT /user/v3/users/{userID}/activate
+
+
+Expert API
+Base URL
+http://localhost:8899/expert
+Expert Profile
+
+Create Expert: POST /v2/createExpert
+Update Expert: PUT /v2/update
+Get All Expert: GET /v1/getAllExpert
+Get Expert Detail: GET /v1/getDetail/:id
+
+Working Hour Management
+
+Create Working Hour: POST /v2/workHour
+Update Working Hour: PUT /v2/workHour
+Get Working Hour: GET /v1/workHour/:expertId
+Delete Working Hour: DELETE /v2/workHour/:workingHourId
+
+Unavailable Time Management
+
+Create Unavailable Time: POST /v2/unavailableTime
+Update Unavailable Time: PUT /v2/unavailableTime
+Get Unavailable Time: GET /v1/unavailableTime/:expertId
+Delete Unavailable Time: DELETE /v2/unavailableTime/:unavailableTimeId
+
+Specialization Management
+
+Create Specialization: POST /v2/specialization
+Update Specialization: PUT /v2/specialization
+Get Specialization: GET /v1/specialization/:expertId
+Delete Specialization: DELETE /v2/specialization/:specializationId
+
+Price Management
+
+Create Price: POST /v2/price
+Update Price: PUT /v2/price
+Get Price: GET /v1/price/:expertId
+Delete Price: DELETE /v2/price/:pricingId
+
+
+Booking API
+Base URL
+http://localhost:8899/booking
+Public APIs (v1) - Không cần Authentication
+
+Get Available Slots: GET /v1/available-slots
+
+Private APIs (v2) - Cần Authentication
+Basic Operations
+
+Create Booking: POST /v2/
+Update Booking Notes: POST /v2/update-notes
+Cancel Booking: POST /v2/cancel/:bookingID
+Confirm Booking: POST /v2/confirm
+Reschedule Booking: POST /v2/reschedule
+Complete Booking: POST /v2/complete
+
+Query Operations
+
+Get Upcoming Bookings For Expert: GET /v2/upcoming (Xuất hiện ở Worker)
+Get Booking Status History: GET /v2/status-history
+Get Booking By ID: GET /v2/detail
+Get User Booking History: GET /v2/history
+Get Booking Stats: GET /v2/stats
+Search Bookings: GET /v2/search 
+
+
