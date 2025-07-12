@@ -140,8 +140,9 @@ CREATE TABLE tbl_consultation_bookings (
     cancelled_by_user_id UUID REFERENCES tbl_users(user_id),
     cancelled_at TIMESTAMP WITH TIME ZONE,
     reminder_sent BOOLEAN DEFAULT false,
+    BookingCompletedAt TIMESTAMP WITH TIME ZONE
     booking_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    booking_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    booking_updated_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Bảng lịch sử thay đổi trạng thái đặt lịch - Theo dõi từng bước thay đổi

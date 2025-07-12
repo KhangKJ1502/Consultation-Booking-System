@@ -118,7 +118,7 @@ Specialization
 Create Specialization: POST http://localhost:8899/expert/v2/specialization
 Update Specialization: PUT http://localhost:8899/expert/v2/specialization
 Get Specialization: GET http://localhost:8899/expert/v1/specialization/:expertId
-Delete Specialization: DELETE http://localhost:8899/expert/v2/specialization/:specializationId
+Delete Specialization: DELETE http://localhost:8899/expert/v2/specialization/:specializationId  
 
 Price
 
@@ -132,7 +132,7 @@ Delete Price: DELETE http://localhost:8899/expert/v2/price/:pricingId
 +==================================================+
 BOOKING API ENDPOINTS
 Public APIs (v1) - No Authentication Required
-GET http://localhost:8899/booking/v1/available-slots
+Get available slot: GET http://localhost:8899/booking/v1/available-slots 
 Private APIs (v2) - Authentication Required
 Basic Operations
 Create Booking: POST http://localhost:8899/booking/v2/

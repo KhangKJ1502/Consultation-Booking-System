@@ -191,8 +191,10 @@ func (ens *EnhancedNotificationService) sendEmailWithRetry(payload *EmailPayload
 		var err error
 		switch payload.From {
 		case "user":
+			log.Printf("📩 Gửi email nhắc lịch từ [%s] với tên [%s] đến [%s] (name: %s)", payload.From, reminderData.UserName, payload.Recipient, reminderData.ExpertName)
 			err = ens.emailSvc.SendConsultationBookingRemindersToUser(ctx, payload.UserID, reminderData)
 		case "expert":
+			log.Printf("📩 Gửi email nhắc lịch từ [%s] với tên [%s] đến [%s] (name: %s)", payload.From, reminderData.ExpertName, payload.Recipient, reminderData.UserName)
 			err = ens.emailSvc.SendConsultationBookingRemindersToExpert(ctx, payload.UserID, reminderData)
 		default:
 			// Fallback: gửi theo recipient
@@ -209,7 +211,6 @@ func (ens *EnhancedNotificationService) sendEmailWithRetry(payload *EmailPayload
 			log.Printf("✅ Email gửi thành công đến %s ở lần thử %d", payload.Recipient, attempt)
 			return nil
 		}
-
 		lastErr = err
 		log.Printf("❌ Gửi email lần %d thất bại cho user %s: %v", attempt, payload.UserID, err)
 

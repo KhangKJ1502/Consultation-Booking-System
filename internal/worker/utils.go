@@ -33,3 +33,21 @@ func getString(m map[string]interface{}, key string) string {
 	}
 	return ""
 }
+
+// Dành cho reminder gửi trước 1 tiếng
+func FormatTimeUntil(bookingTime time.Time) string {
+	now := time.Now()
+	duration := bookingTime.Sub(now)
+
+	if duration < 0 {
+		return "Đã qua"
+	}
+
+	hours := int(duration.Hours())
+	minutes := int(duration.Minutes()) % 60
+
+	if hours > 0 {
+		return fmt.Sprintf("khoảng %d giờ %d phút nữa", hours, minutes)
+	}
+	return fmt.Sprintf("khoảng %d phút nữa", minutes)
+}

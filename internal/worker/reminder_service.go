@@ -226,6 +226,7 @@ func (rs *ReminderService) createUserNotification(userUUID uuid.UUID, booking Bo
 
 // createUserEmailPayload creates email payload for user reminder - SYNCHRONIZED
 func (rs *ReminderService) createUserEmailPayload(booking BookingData) map[string]interface{} {
+	timeUntil := FormatTimeUntil(booking.BookingDatetime)
 	return map[string]interface{}{
 		"from":      "user", // Thêm field "from" để sync với EnhancedNotificationService
 		"user_id":   booking.UserID,
@@ -245,7 +246,7 @@ func (rs *ReminderService) createUserEmailPayload(booking BookingData) map[strin
 			"meeting_link":      booking.MeetingLink,
 			"location":          booking.MeetingAddress,
 			"consultation_type": booking.ConsultationType,
-			"time_until":        "1 giờ",
+			"time_until":        timeUntil,
 		},
 	}
 }
@@ -258,15 +259,12 @@ func (rs *ReminderService) createUserEmailBody(booking BookingData) string {
 		booking.BookingDatetime.Format("15:04 02/01/2006"),
 		booking.ConsultationType,
 	)
-
 	if booking.MeetingLink != "" {
 		body += fmt.Sprintf("Link tham gia: %s\n", booking.MeetingLink)
 	} else if booking.MeetingAddress != "" {
 		body += fmt.Sprintf("Địa chỉ: %s\n", booking.MeetingAddress)
 	}
-
 	body += "\nVui lòng chuẩn bị sẵn sàng cho buổi tư vấn.\n\nTrân trọng,\nĐội ngũ CBS"
-
 	return body
 }
 
@@ -354,6 +352,7 @@ func (rs *ReminderService) createExpertNotification(expertUserUUID uuid.UUID, bo
 
 // createExpertEmailPayload creates email payload for expert reminder - SYNCHRONIZED
 func (rs *ReminderService) createExpertEmailPayload(booking BookingData, expertUserID string) map[string]interface{} {
+	timeUntil := FormatTimeUntil(booking.BookingDatetime)
 	return map[string]interface{}{
 		"from":      "expert", // Thêm field "from" để sync với EnhancedNotificationService
 		"user_id":   expertUserID,
@@ -364,7 +363,6 @@ func (rs *ReminderService) createExpertEmailPayload(booking BookingData, expertU
 		"data": map[string]interface{}{
 			"booking_id":        booking.BookingID,
 			"user_name":         booking.UserFullName,
-			"user_email":        booking.UserEmail,
 			"expert_id":         booking.ExpertProfileID,
 			"expert_name":       booking.ExpertFullName,
 			"expert_email":      booking.ExpertEmail,
@@ -373,7 +371,7 @@ func (rs *ReminderService) createExpertEmailPayload(booking BookingData, expertU
 			"meeting_link":      booking.MeetingLink,
 			"location":          booking.MeetingAddress,
 			"consultation_type": booking.ConsultationType,
-			"time_until":        "1 giờ",
+			"time_until":        timeUntil,
 		},
 	}
 }
