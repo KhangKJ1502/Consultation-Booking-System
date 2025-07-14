@@ -33,7 +33,7 @@ func (br *BookingRouter) InitBookingRouter(router *gin.RouterGroup) {
 		bookingPrivate.GET("/upcoming", response.Wrap(bookingCtr.GetUpcomingBookingsForExpert))
 		bookingPrivate.POST("/cancel/:bookingID", response.Wrap(bookingCtr.CancelBooking))
 		bookingPrivate.POST("/confirm", response.Wrap(bookingCtr.ConfirmBooking))
-		bookingPrivate.POST("/update-notes", response.Wrap(bookingCtr.UpdateBookingNotes))
+		bookingPrivate.PUT("/update-notes", response.Wrap(bookingCtr.UpdateBookingNotes))
 		bookingPrivate.GET("/status-history", response.Wrap(bookingCtr.GetBookingStatusHistory))
 
 		// Missing routes - Added below

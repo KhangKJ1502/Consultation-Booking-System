@@ -122,7 +122,7 @@ func (us *userService) Login(ctx context.Context, req dtousergo.LoginRequest) (*
 
 	// Tìm user theo email
 	var user entityuser.User
-	if err := us.db.WithContext(ctx).Where("user_email = ?", req.Email).First(&user).Error; err != nil {
+	if err := us.db.WithContext(ctx).Where("user_email = ? AND is_active = true", req.Email).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("invalid email or password")
 		}
@@ -1028,7 +1028,7 @@ func (us *userService) GetActiveTokens(ctx context.Context, userID uuid.UUID) (*
 	var tokens []entityuser.UserToken
 	if err := us.db.WithContext(ctx).
 		Where("user_id = ? AND is_revoked = false AND expires_at > ?", userID, time.Now()).
-		Order("token_created_at desc").
+		Order("created_at desc").
 		Find(&tokens).Error; err != nil {
 		return nil, fmt.Errorf("failed to get active tokens: %v", err)
 	}

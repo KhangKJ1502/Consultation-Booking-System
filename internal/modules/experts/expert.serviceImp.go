@@ -8,6 +8,7 @@ import (
 	"cbs_backend/utils/cache"
 	utils "cbs_backend/utils/cache"
 	"context"
+	"time"
 
 	"errors"
 	"fmt"
@@ -156,10 +157,13 @@ func (es *expertService) GetExpertProfileDetails(ctx context.Context, expertID s
 	// Map working hours
 	var whDTOs []dtoexperts.WorkingHourDTO
 	for _, wh := range workingHours {
+		startParsed, _ := time.Parse("15:04:05", wh.StartTime)
+		endParsed, _ := time.Parse("15:04:05", wh.EndTime)
+
 		whDTOs = append(whDTOs, dtoexperts.WorkingHourDTO{
 			DayOfWeek: fmt.Sprintf("%d", wh.DayOfWeek),
-			StartTime: wh.StartTime.Format("15:04"), // or use wh.StartTime.String() if you want full time
-			EndTime:   wh.EndTime.Format("15:04"),   // or use wh.EndTime.String()
+			StartTime: startParsed.Format("15:04"),
+			EndTime:   endParsed.Format("15:04"),
 		})
 	}
 
@@ -367,17 +371,27 @@ func (es *expertService) DeleteExpertProfile(ctx context.Context, expertID strin
 
 // Working hour
 func (es *expertService) CreateWorkHour(ctx context.Context, req dtoexperts.CreateWorkingHourRequest) (*dtoexperts.CreateWorkingHourResponse, error) {
-	// Parse ExpertProfileID from string to UUID
 	expertUUID, err := uuid.Parse(req.ExpertProfileID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid expert profile ID format: %w", err)
 	}
 
+	// Parse chuỗi thành time.Time
+	startTimeParsed, err := time.Parse("15:04", req.StartTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start_time format: %w", err)
+	}
+
+	endTimeParsed, err := time.Parse("15:04", req.EndTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end_time format: %w", err)
+	}
+
 	workingHour := entityexpert.ExpertWorkingHour{
 		ExpertProfileID: expertUUID,
 		DayOfWeek:       req.DayOfWeek,
-		StartTime:       req.StartTime,
-		EndTime:         req.EndTime,
+		StartTime:       startTimeParsed.Format("15:04:05"),
+		EndTime:         endTimeParsed.Format("15:04:05"),
 		IsActive:        true,
 	}
 
@@ -390,6 +404,7 @@ func (es *expertService) CreateWorkHour(ctx context.Context, req dtoexperts.Crea
 		DayOfWeek:     workingHour.DayOfWeek,
 		StartTime:     workingHour.StartTime,
 		EndTime:       workingHour.EndTime,
+		IsActive:      workingHour.IsActive,
 	}, nil
 }
 
@@ -399,22 +414,39 @@ func (es *expertService) UpdateWorkHour(ctx context.Context, req dtoexperts.Upda
 		return nil, fmt.Errorf("work hour not found: %w", err)
 	}
 
+	// Parse chuỗi thời gian từ request
+	startTimeParsed, err := time.Parse("15:04", req.StartTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start_time format: %w", err)
+	}
+
+	endTimeParsed, err := time.Parse("15:04", req.EndTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end_time format: %w", err)
+	}
+
+	// Gán vào entity (sẽ lưu dưới dạng "08:00:00")
 	wh.DayOfWeek = req.DayOfWeek
-	wh.StartTime = req.StartTime
-	wh.EndTime = req.EndTime
+	wh.StartTime = startTimeParsed.Format("15:04:05")
+	wh.EndTime = endTimeParsed.Format("15:04:05")
 
 	if err := es.db.WithContext(ctx).Save(&wh).Error; err != nil {
 		return nil, fmt.Errorf("update work hour failed: %w", err)
 	}
 
+	// Parse lại từ chuỗi để trả response
+	startTimeReturn, _ := time.Parse("15:04:05", wh.StartTime)
+	endTimeReturn, _ := time.Parse("15:04:05", wh.EndTime)
+
 	return &dtoexperts.UpdateWorkingHourResponse{
 		WorkingHourID: wh.WorkingHourID.String(),
 		DayOfWeek:     wh.DayOfWeek,
-		StartTime:     wh.StartTime,
-		EndTime:       wh.EndTime,
+		StartTime:     startTimeReturn,
+		EndTime:       endTimeReturn,
 		IsActive:      wh.IsActive,
 	}, nil
 }
+
 func (es *expertService) GetAllWorkHourByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllWorkingHourResponse, error) {
 
 	if expertID == "" {
@@ -424,10 +456,9 @@ func (es *expertService) GetAllWorkHourByExpertID(ctx context.Context, expertID 
 	// ✅ slice đúng kiểu (con trỏ ‑ hoặc bỏ * tùy DTO bạn định trả)
 	var workingHours []*dtoexperts.GetAllWorkingHourResponse
 
-	// Ví dụ dùng GORM: bảng working_hours có cột expert_id
 	if err := es.db.WithContext(ctx).
 		Table("tbl_expert_working_hours").
-		Where("expert_id = ?", expertID).
+		Where("expert_profile_id = ?", expertID).
 		Order("day_of_week, start_time").
 		Find(&workingHours).Error; err != nil {
 
@@ -483,38 +514,59 @@ func (es *expertService) CreateUnavailableTime(ctx context.Context, req dtoexper
 		IsRecurring:       unavailable.IsRecurring,
 	}, nil
 }
+
 func (es *expertService) UpdateUnavailableTime(ctx context.Context, req dtoexperts.UpdateUnavailableTimeRequest) (*dtoexperts.UpdateUnavailableTimeResponse, error) {
 	var ua entityexpert.ExpertUnavailableTime
+
+	// Kiểm tra xem bản ghi có tồn tại không
 	if err := es.db.WithContext(ctx).First(&ua, "unavailable_time_id = ?", req.UnavailableTimeID).Error; err != nil {
 		return nil, fmt.Errorf("unavailable time not found: %w", err)
 	}
 
-	ua.UnavailableStartDatetime = req.StartDatetime
-	ua.UnavailableEndDatetime = req.EndDatetime
+	// Parse thời gian
+	startTime, err := time.Parse(time.RFC3339, req.StartDatetime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start_datetime format (expecting RFC3339): %w", err)
+	}
+
+	endTime, err := time.Parse(time.RFC3339, req.EndDatetime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end_datetime format (expecting RFC3339): %w", err)
+	}
+
+	// Gán dữ liệu vào entity
+	ua.UnavailableStartDatetime = startTime
+	ua.UnavailableEndDatetime = endTime
 	ua.UnavailableReason = req.Reason
 	ua.IsRecurring = req.IsRecurring
+
+	// Xử lý recurrence pattern nếu có
 	if req.RecurrencePattern != nil {
 		if rp, ok := req.RecurrencePattern.(common.JSONB); ok {
 			ua.RecurrencePattern = rp
 		} else {
-			return nil, fmt.Errorf("invalid recurrence pattern type")
+			return nil, fmt.Errorf("invalid recurrence pattern type, must be JSONB")
 		}
 	} else {
 		ua.RecurrencePattern = nil
 	}
 
+	// Cập nhật DB
 	if err := es.db.WithContext(ctx).Save(&ua).Error; err != nil {
 		return nil, fmt.Errorf("update unavailable time failed: %w", err)
 	}
 
+	// Trả về response
 	return &dtoexperts.UpdateUnavailableTimeResponse{
 		UnavailableTimeID: ua.UnavailableTimeID.String(),
 		StartTime:         ua.UnavailableStartDatetime,
 		EndTime:           ua.UnavailableEndDatetime,
 		Reason:            ua.UnavailableReason,
 		IsRecurring:       ua.IsRecurring,
+		RecurrencePattern: ua.RecurrencePattern,
 	}, nil
 }
+
 func (es *expertService) GetAllUnavailableTimeByExpertID(ctx context.Context, expertID string) ([]*dtoexperts.GetAllsExpertUnavailableTimeResponse, error) {
 	if expertID == "" {
 		return nil, fmt.Errorf("expert Id must be not empty")

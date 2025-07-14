@@ -112,9 +112,10 @@ func (bc *BookingController) UpdateBookingNotes(c *gin.Context) (res interface{}
 
 	return resp, nil
 }
+
 func (bc *BookingController) GetBookingStatusHistory(c *gin.Context) (res interface{}, err error) {
 	var req dtobookings.GetBookingStatusHistoryRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		bc.Logger.Error("Invalid get booking status history request", zap.Error(err))
 		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get booking status history request", err)
 	}
@@ -129,7 +130,7 @@ func (bc *BookingController) GetBookingStatusHistory(c *gin.Context) (res interf
 
 func (bc *BookingController) GetBookingByID(c *gin.Context) (res interface{}, err error) {
 	var req dtobookings.GetBookingByIDRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		bc.Logger.Error("Invalid get booking by ID request", zap.Error(err))
 		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get booking by ID request", err)
 	}
@@ -145,7 +146,7 @@ func (bc *BookingController) GetBookingByID(c *gin.Context) (res interface{}, er
 
 func (bc *BookingController) GetUserBookingHistory(c *gin.Context) (res interface{}, err error) {
 	var req dtobookings.GetUserBookingHistoryRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		bc.Logger.Error("Invalid get user booking history request", zap.Error(err))
 		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get user booking history request", err)
 	}
@@ -193,7 +194,7 @@ func (bc *BookingController) CompleteBooking(c *gin.Context) (res interface{}, e
 
 func (bc *BookingController) GetBookingStats(c *gin.Context) (res interface{}, err error) {
 	var req dtobookings.GetBookingStatsRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		bc.Logger.Error("Invalid get booking stats request", zap.Error(err))
 		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid get booking stats request", err)
 	}
@@ -209,7 +210,7 @@ func (bc *BookingController) GetBookingStats(c *gin.Context) (res interface{}, e
 
 func (bc *BookingController) SearchBookings(c *gin.Context) (res interface{}, err error) {
 	var req dtobookings.SearchBookingsRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		bc.Logger.Error("Invalid search bookings request", zap.Error(err))
 		return nil, response.NewAPIError(http.StatusBadRequest, "Invalid search bookings request", err)
 	}

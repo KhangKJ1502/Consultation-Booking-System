@@ -3,8 +3,8 @@ package dtobookings
 import "time"
 
 type GetBookingStatusHistoryRequest struct {
-	BookingID string `json:"booking_id" validate:"required,uuid"`
-	UserID    string `json:"user_id" validate:"required,uuid"`
+	BookingID string `json:"booking_id" binding:"required,uuid"`
+	UserID    string `json:"user_id" binding:"required,uuid"`
 }
 
 type StatusHistoryItem struct {

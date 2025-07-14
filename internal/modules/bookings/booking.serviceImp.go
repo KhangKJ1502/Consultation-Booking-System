@@ -866,7 +866,7 @@ func (bs *bookingservice) GetBookingByID(ctx context.Context, req dtobookings.Ge
 	if err := bs.db.WithContext(ctx).
 		Preload("User").
 		Preload("ExpertProfile").
-		First(&booking, "booking_id = ?", bookingID).Error; err != nil {
+		First(&booking, "booking_id = ? AND", bookingID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("booking not found")
 		}
