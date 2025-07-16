@@ -71,6 +71,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/robfig/cron v1.2.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/time v0.12.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.0
 )

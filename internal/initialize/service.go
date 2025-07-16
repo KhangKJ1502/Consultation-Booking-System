@@ -2,6 +2,7 @@ package initialize
 
 import (
 	"cbs_backend/internal/modules/bookings"
+	"cbs_backend/internal/modules/dashboard"
 	"cbs_backend/internal/modules/experts"
 	"cbs_backend/internal/modules/users"
 	"cbs_backend/internal/service/email"
@@ -33,8 +34,5 @@ func InitServices(
 	experts.InitExpertService(db, expertCache, log)
 	//5.Booking
 	bookings.InitBookingService(db, bookingCache, log, redisLocker)
+	dashboard.InitDashboardService(db, log)
 }
-
-// func InitializeEmailService(db *gorm.DB, logger *zap.Logger) interfaces.EmailService {
-// 	return email.NewEmailManager(db, logger)
-// }

@@ -31,7 +31,7 @@ func (br *BookingRouter) InitBookingRouter(router *gin.RouterGroup) {
 		// Existing routes
 		bookingPrivate.POST("/", response.Wrap(bookingCtr.CreateBooking))
 		bookingPrivate.GET("/upcoming", response.Wrap(bookingCtr.GetUpcomingBookingsForExpert))
-		bookingPrivate.POST("/cancel/:bookingID", response.Wrap(bookingCtr.CancelBooking))
+		bookingPrivate.POST("/cancel/:bookingID", middleware.CancelBookingLimiter.Middleware(), response.Wrap(bookingCtr.CancelBooking))
 		bookingPrivate.POST("/confirm", response.Wrap(bookingCtr.ConfirmBooking))
 		bookingPrivate.PUT("/update-notes", response.Wrap(bookingCtr.UpdateBookingNotes))
 		bookingPrivate.GET("/status-history", response.Wrap(bookingCtr.GetBookingStatusHistory))
@@ -44,4 +44,6 @@ func (br *BookingRouter) InitBookingRouter(router *gin.RouterGroup) {
 		bookingPrivate.GET("/stats", response.Wrap(bookingCtr.GetBookingStats))
 		bookingPrivate.GET("/search", response.Wrap(bookingCtr.SearchBookings))
 	}
+
+	// bookingAdmin := router.Group("/v3")
 }

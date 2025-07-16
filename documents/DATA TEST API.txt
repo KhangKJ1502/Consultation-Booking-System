@@ -148,3 +148,15 @@ Get Booking Stats: GET /v2/stats
 Search Bookings: GET /v2/search 
 
 
+Dash Board
+Get Booking Stats : POST http://localhost:8899/dashboard/v2/booking-stats
+                         http://localhost:8899/dashboard/v3/booking-stats 
+
+Get System Overview: GET http://localhost:8899/dashboard/v2/system-overview 
+                         http://localhost:8899/dashboard/v3/system-overview 
+
+Get Revenue Report: POST http://localhost:8899/dashboard/v2/revenue-report 
+                         http://localhost:8899/dashboard/v3/revenue-report 
+                        
+Get Expert Performance : POST http://localhost:8899/dashboard/v2/expert/{id}/performance 
+                              http://localhost:8899/dashboard/v3/expert/{id}/performance

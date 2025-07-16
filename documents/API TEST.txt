@@ -14,6 +14,20 @@ HTTP Status Code nên sử dụng
 404 Not Found - Booking không tồn tại
 409 Conflict - Booking đã bị cancel hoặc không thể cancel
 
+===================== DASH BOARD ======================
+
+Get Booking Stats : POST http://localhost:8899/dashboard/v2/booking-stats
+                         http://localhost:8899/dashboard/v3/booking-stats 
+
+Get System Overview: GET http://localhost:8899/dashboard/v2/system-overview 
+                         http://localhost:8899/dashboard/v3/system-overview 
+
+Get Revenue Report: POST http://localhost:8899/dashboard/v2/revenue-report 
+                         http://localhost:8899/dashboard/v3/revenue-report 
+                        
+Get Expert Performance : POST http://localhost:8899/dashboard/v2/expert/{id}/performance 
+                              http://localhost:8899/dashboard/v3/expert/{id}/performance
+
 User;
 User API Endpoints
 System APIs
@@ -792,8 +806,59 @@ curl -X GET http://localhost:8080/api/v1/experts/EXPERT_ID/pricing \
 curl -X DELETE http://localhost:8080/api/v1/experts/pricing/pricing_id_here \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 
+================ DASH BOARD =================
+1. Dashboard Private (v1) - Cần JWT Token
+Get Booking Stats
 
----
+{
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-31",
+  "expert_id": "",
+  "status": ""
+}
+
+Get System Overview
+
+{
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-31",
+  "group_by": "month",
+  "expert_id": ""
+}
+
+Get Expert Performance
+
+GET {{base_url}}/api/dashboard/v1/expert/123/performance
+
+2. Dashboard Admin (v2) - Cần JWT Token + Admin Role
+Get Booking Stats (Admin)
+
+{
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-31",
+  "expert_id": "",
+  "status": "",
+  "detailed": true
+}
+
+Get System Overview (Admin)
+
+GET {{base_url}}/api/dashboard/v2/system-overview
+
+
+Get Revenue Report (Admin)
+
+{
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-31",
+  "group_by": "day",
+  "expert_id": "",
+  "include_details": true
+}
+
+Get Expert Performance (Admin)
+
+GET {{base_url}}/api/dashboard/v2/expert/123/performance
 
 ## 📝 Notes
 - Thay thế `YOUR_JWT_TOKEN_HERE` bằng JWT token thực tế

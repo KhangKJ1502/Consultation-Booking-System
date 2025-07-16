@@ -42,7 +42,7 @@ func NewBookingService(db *gorm.DB, cache cache.BookingCache, logger *zap.Logger
 }
 
 /*
-	Thứ tự chuẩn xử lí
+Thứ tự chuẩn xử lí
 
 Input validation - Kiểm tra tất cả input trước
 Calculate variables - Tính toán các biến cần thiết
