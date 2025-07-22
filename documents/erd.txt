@@ -79,7 +79,6 @@ CREATE TABLE tbl_notification_history (
 CREATE TABLE tbl_expert_profiles (
     expert_profile_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
-    specialization_list TEXT[] NOT NULL, -- Danh sách chuyên môn
     experience_years INTEGER,
     expert_bio TEXT,
     consultation_fee DECIMAL(10,2),
@@ -121,7 +120,7 @@ CREATE TABLE tbl_expert_unavailable_times (
 CREATE TABLE tbl_consultation_bookings (
     booking_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES tbl_users(user_id) ON DELETE CASCADE,
-    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
+         UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
     booking_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
     duration_minutes INTEGER DEFAULT 60,
     consultation_type VARCHAR(20) NOT NULL CHECK (consultation_type IN ('online', 'offline')),
@@ -270,14 +269,29 @@ CREATE TABLE tbl_user_tokens (
 );
 
 -- Bảng liên kết nhiều-nhiều: Chuyên gia - Chuyên môn
-CREATE TABLE tbl_expert_specializations (
-    specialization_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    expert_profile_id UUID NOT NULL REFERENCES tbl_expert_profiles(expert_profile_id) ON DELETE CASCADE,
-    specialization_name VARCHAR(100) NOT NULL,
-    specialization_description TEXT,
-    is_primary BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE tbl_specializations (
+  specialization_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  specialization_name VARCHAR(100) UNIQUE NOT NULL,
+   specialization_description  TEXT,
+ is_primary BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE tbl_expert_specializations (
+  expert_profile_id UUID
+    NOT NULL
+    REFERENCES tbl_expert_profiles(expert_profile_id)
+    ON DELETE CASCADE,
+  specialization_id UUID
+    NOT NULL
+    REFERENCES tbl_specializations(specialization_id)
+    ON DELETE CASCADE,
+  is_primary BOOLEAN DEFAULT FALSE,
+  assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (expert_profile_id, specialization_id)
+);
+
+
 
 -- Bảng quản lý phiên đăng nhập - Theo dõi sessions
 CREATE TABLE tbl_user_sessions (

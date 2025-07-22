@@ -130,7 +130,7 @@ func (uc *UserController) UpdateInforUser(ctx *gin.Context) (res interface{}, er
 		UserCreatedAt:  userUpdate.UserCreatedAt,
 		UserUpdatedAt:  userUpdate.UserUpdatedAt,
 	}
-	return req, nil
+	return res, nil
 }
 
 // UserController Logout method
